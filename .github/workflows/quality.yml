@@ -1,0 +1,74 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install development environment
+        run: python -m pip install -e '.[dev]'
+
+      - name: Validate configuration and notebook structure
+        run: |
+          python -m pre_commit validate-config .pre-commit-config.yaml
+          python -m json.tool notebooks/Factored_MDP_Demo.ipynb > /dev/null
+
+      - name: Check formatting, linting, and types
+        run: |
+          python -m ruff check scripts tests
+          python -m ruff format --check scripts tests
+          python -m mypy scripts
+
+      - name: Run unit tests and compilation checks
+        env:
+          MPLBACKEND: Agg
+        run: |
+          python -B -m unittest discover -s tests -v
+          python -m compileall -q scripts tests
+
+      - name: Execute the demonstration notebook from a fresh kernel
+        run: |
+          python -m jupyter nbconvert \
+            --to notebook \
+            --execute \
+            --output Factored_MDP_Demo.executed.ipynb \
+            --output-dir /tmp \
+            --ExecutePreprocessor.timeout=120 \
+            notebooks/Factored_MDP_Demo.ipynb
+          python -m json.tool /tmp/Factored_MDP_Demo.executed.ipynb > /dev/null
+
+      - name: Build and validate the distribution
+        run: |
+          python -m pip check
+          python -m pip wheel --no-deps --wheel-dir /tmp/ewm-wheel .

@@ -1,5 +1,7 @@
 # Evolving World Models
 
+[![Quality](https://github.com/nquaz/evolving-world-models/actions/workflows/quality.yml/badge.svg)](https://github.com/nquaz/evolving-world-models/actions/workflows/quality.yml)
+
 This repository studies how the objectives used to learn a world model shape
 performance on later tasks. The motivating distinction is between learning
 predictable but uncontrollable regularities and learning action-sensitive
@@ -49,6 +51,8 @@ updates are therefore synchronous.
   visualization API.
 - `tests/test_mdp.py` tests the dependency-free transition core, while
   `tests/test_visualization.py` tests graph structure and rendering adapters.
+- `.github/workflows/quality.yml` independently checks supported Python
+  versions, executes the demonstration notebook, and builds the distribution.
 
 The transition-model core uses only the Python standard library and supports
 Python 3.9 or newer. Visualization dependencies are optional.
@@ -168,6 +172,11 @@ pre-commit run --all-files --hook-stage pre-push
 Hooks can modify files. Review those edits and rerun the commands until every
 hook passes. See `AGENTS.md` for commit construction, shared-worktree safety,
 and the complete research-production requirements.
+
+GitHub Actions repeats the non-mutating quality gates on Python 3.9 and 3.12,
+executes the notebook from a fresh kernel, and builds a wheel. The workflow has
+read-only repository permissions and pins third-party actions to immutable
+commit identifiers.
 
 ## Verification
 
