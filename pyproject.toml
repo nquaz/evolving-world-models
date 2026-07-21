@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evolving-world-models"
+version = "0.1.0"
+description = "Transition-model foundations for studying how world-model objectives shape downstream control."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+viz = [
+    "matplotlib>=3.7",
+    "networkx>=3.2",
+]
+graphviz = [
+    "graphviz>=0.21",
+    "networkx>=3.2",
+]
+notebooks = [
+    "evolving-world-models[viz]",
+    "ipykernel",
+    "jupyter",
+]
+dev = [
+    "evolving-world-models[graphviz,notebooks,viz]",
+    "mypy==1.19.1",
+    "pre-commit==4.3.0",
+    "ruff==0.15.22",
+]
+
+[tool.setuptools.packages.find]
+include = ["scripts*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.9"
+files = ["scripts"]
+strict = true
+pretty = true
+show_error_codes = true
+warn_unreachable = true
