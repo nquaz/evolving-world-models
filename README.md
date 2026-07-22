@@ -16,19 +16,19 @@ downstream-task distribution are intentionally left for later milestones.
 `AbstractMDP` represents a named conditional transition model
 
 $$
-p(x' \mid x, \operatorname{pa}(x)).
+p(x' \mid x, \mathrm{pa}(x)).
 $$
 
 Here, `variables` is the scope of the values in $x$ and `parent_variables`
-is the union of the values in $\operatorname{pa}(x)$. A conventional MDP is
+is the union of the values in $\mathrm{pa}(x)$. A conventional MDP is
 the special case where `variables` describes the state and
 `parent_variables` describes the action.
 
 `FactoredMDP` combines constituent models with disjoint predicted scopes:
 
 $$
-p(x' \mid x, \operatorname{pa}(x))
-= \prod_i p_i(x_i' \mid x_i, \operatorname{pa}(x_i)).
+p(x' \mid x, \mathrm{pa}(x))
+= \prod_i p_i(x_i' \mid x_i, \mathrm{pa}(x_i)).
 $$
 
 A factor may use another factor's variable as a parent. The composition reads

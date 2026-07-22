@@ -29,7 +29,7 @@ backfill them.
 This repository studies how world-model learning objectives affect performance
 on downstream tasks, especially the contrast between predictable but
 uncontrollable regularities and action-sensitive, controllable regularities.
-The current foundation models $p(x' \mid x, \operatorname{pa}(x))$.
+The current foundation models $p(x' \mid x, \mathrm{pa}(x))$.
 
 Preserve these established boundaries unless the task explicitly changes them:
 
@@ -96,9 +96,21 @@ log or documentation.
 
 - Read-only Git inspection, such as `status`, `diff`, `log`, and `show`, MAY be
   used whenever Git metadata is valid.
-- Creating or amending commits, tags, branches, or releases requires an explicit
-  user request. Authorization to commit does not authorize pushing, opening a
-  pull request, merging, rebasing, or otherwise changing remote state.
+- Creating or amending a commit requires a fresh, explicit user command for the
+  current change, such as "commit these changes." A request to edit, fix,
+  implement, verify, stage, prepare, or continue work does not authorize a
+  commit. Do not infer authorization from an earlier turn, a prior commit, a
+  standing workflow preference, or a general statement about committing in the
+  future.
+- Pushing requires its own fresh, explicit user command for the current change,
+  such as "push this commit." Authorization to commit does not authorize a push,
+  and authorization to push does not authorize a commit. A single command that
+  explicitly says "commit and push" authorizes both actions in that order.
+  Each authorization is one-shot; after the named action succeeds or the change
+  scope materially changes, require another explicit command.
+- Creating or amending tags, branches, or releases requires a fresh, explicit
+  command naming that action. Authorization for one Git mutation never implies
+  authorization for another.
 - Verify the repository root with `git rev-parse --show-toplevel` before relying
   on Git. Never initialize, repair, replace, or symlink `.git` merely to make
   Git commands work.
@@ -143,9 +155,10 @@ log or documentation.
 
 - Keep branches focused and short-lived. Do not commit directly to a protected
   branch unless the repository workflow explicitly permits it.
-- Fetching, pulling, merging, rebasing, pushing, force-pushing, and opening or
-  merging pull requests require explicit authorization because they affect
-  shared or remote state.
+- Fetching, pulling, merging, rebasing, force-pushing, and opening or merging
+  pull requests require a fresh, explicit command naming that action because
+  they affect shared or remote state. Apply the same one-shot, current-change
+  scope used for commits and pushes.
 - Never rebase published shared history without coordination. If rewriting a
   remote branch is explicitly approved and unavoidable, use
   `--force-with-lease`, never plain `--force`, and verify the exact remote and

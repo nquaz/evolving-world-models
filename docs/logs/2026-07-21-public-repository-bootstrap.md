@@ -1,80 +1,83 @@
-# Public repository bootstrap and CI validation
+# Repository quality pipeline and public bootstrap
 
-Date: 2026-07-21
-Timezone: America/New_York
-Status: Complete
-Validated revision: 6cf6a275d281a66e055ed06de179ff301f8bf725
-Root revision: 73092a3d00e3309ac52b070c8333997eeb340b68
+Status: complete
+Date/time: 2026-07-21T20:33:23-04:00
+Code revision: parent 8875d313cff4f6d660621375c5ba22c206392cc8; dirty
+corrective state validated before the authorized commit
+Run/config identifiers: local quality validation; GitHub Actions runs
+29878570532 and 29879593300
+Primary artifacts: `.pre-commit-config.yaml`, `pyproject.toml`,
+`.github/workflows/quality.yml`, `LICENSE`, `AGENTS.md`, and `README.md`
 Remote: https://github.com/nquaz/evolving-world-models
-CI run: https://github.com/nquaz/evolving-world-models/actions/runs/29878570532
-Primary artifacts: LICENSE, pyproject.toml, .pre-commit-config.yaml,
-.github/workflows/quality.yml
 
 ## Overview
 
-This milestone converted the validated local project into a new public GitHub
-repository with explicit licensing, privacy-aware commit metadata, local Git
-hooks, and independent continuous integration. The initial source snapshot and
-the CI workflow were kept as separate atomic commits. The public remote was
-created only after a staged-content audit, successful local gates, and explicit
-informed approval of the disclosure scope.
+This record consolidates the previously separate code-quality and public-
+repository bootstrap logs. The milestone established a pinned local quality
+pipeline, repaired its initial lint and typing baseline, published a reviewed
+Apache-2.0-licensed snapshot, and added independent continuous integration for
+Python 3.9 and 3.12.
 
-The published baseline implements tabular and factored transition models,
-optional NetworkX, Matplotlib, and Graphviz adapters, a worked notebook, tests,
-engineering and visualization documentation, and the pinned local quality
-pipeline.
+The public baseline contains the tabular and factored transition-model core,
+optional visualization adapters, a worked notebook, tests, documentation, and
+reproducible contributor tooling. A same-day addendum records a README math-
+rendering regression that passed source-level checks and CI but failed in
+GitHub's client-side renderer.
 
-## Objective
+## Research question, hypothesis, or acceptance criteria
 
-The operational question was whether the project could be published as a clean,
-reproducible baseline while preserving the following properties:
+This was an engineering milestone, not a scientific experiment. The question
+was whether the project could become a clean public baseline while:
 
-- no accidental credential, cache, environment, or large-artifact publication;
-- an explicit permissive license represented correctly in package metadata;
-- honest initial history rather than reconstructed intermediate commits;
-- local pre-commit and pre-push enforcement;
-- independent CI on the minimum documented Python version and a current
-  development version;
-- fresh-kernel notebook execution and package-build validation; and
-- an auditable record of publication decisions, results, and remaining risks.
+- retaining the declared Python 3.9 minimum;
+- enforcing deterministic formatting, high-signal linting, strict production
+  typing, all behavioral tests, and compilation checks;
+- keeping fast pre-commit checks separate from complete pre-push checks;
+- publishing no credential, cache, environment, or unintended large artifact;
+- recording an explicit Apache License 2.0 in source and wheel metadata;
+- executing the notebook from a fresh kernel and validating package builds;
+- running the same non-mutating gates independently on GitHub Actions; and
+- preserving an auditable publication and failure history.
+
+Success required clean development installation on Python 3.9, 33 passing tests
+on Python 3.9 and 3.12, passing hook stages, a clean publication audit, correct
+wheel licensing, a public remote with truthful initial history, and a passing
+two-version CI matrix.
 
 ## Setup
 
-- Local platform: Linux 5.14.0-503.40.1.el9_5.x86_64
-- Local environment: Conda environment world_models
-- Local Python: 3.12.13
+- Platform: Linux 5.14.0-503.40.1.el9_5, x86-64
+- Local environment: Conda `world_models`, CPython 3.12.13
+- Minimum-version probe: CPython 3.9.21 in a clean temporary environment
+- Git: 2.43.5
 - GitHub CLI: 2.96.0
-- pre-commit: 4.3.0
 - Ruff: 0.15.22
 - mypy: 1.19.1
-- Default branch: main
-- Repository visibility: public
-- License: Apache License 2.0
-- Git author: GitHub account name with the account's ID-based noreply address
-- CI matrix: Python 3.9 and Python 3.12 on ubuntu-24.04
+- pre-commit: 4.3.0
+- Hook revisions: `pre-commit-hooks` v6.0.0, `ruff-pre-commit` v0.15.22,
+  and `mirrors-mypy` v1.19.1
+- CI: Python 3.9 and 3.12 on `ubuntu-24.04`
+- Default branch and visibility: `main`, public
+- License: Apache-2.0
+- Random seeds, data, and accelerators: not applicable
+- Initial quality-pipeline work: approximately 25 minutes
 
-GitHub CLI used HTTPS authentication. Because no system credential store was
-available, its token was stored outside the repository in a file with mode
-0600. The token was never printed, copied into a command, or added to Git.
+GitHub CLI used HTTPS authentication. With no system credential store, its
+token was kept outside the repository in a mode-0600 file. It was never printed,
+placed in a command argument, logged, or tracked.
 
 ## Replication instructions
 
-### Contributor setup
+From a fresh checkout, create the documented environment and run the complete
+local verification sequence:
 
-From a fresh machine with Git, Conda, and Python available:
-
-~~~bash
+```bash
 git clone https://github.com/nquaz/evolving-world-models.git
 cd evolving-world-models
 conda create --name world_models python=3.12
 conda activate world_models
 python -m pip install -e '.[dev]'
 pre-commit install --install-hooks
-~~~
-
-Run the complete local verification sequence:
-
-~~~bash
 pre-commit validate-config .pre-commit-config.yaml
 python -m ruff check scripts tests
 python -m ruff format --check scripts tests
@@ -84,226 +87,286 @@ python -m compileall -q scripts tests
 python -m json.tool notebooks/Factored_MDP_Demo.ipynb > /dev/null
 pre-commit run --all-files
 pre-commit run --all-files --hook-stage pre-push
-~~~
+```
 
-Execute the notebook from a fresh kernel:
+Repeat the minimum-version gates with an available Python 3.9 interpreter:
 
-~~~bash
-python -m jupyter nbconvert \
-  --to notebook \
-  --execute \
-  --output Factored_MDP_Demo.executed.ipynb \
-  --output-dir /tmp \
+```bash
+minimum_env="$(mktemp -d)"
+python3.9 -m venv "$minimum_env"
+"$minimum_env/bin/python" -m pip install -e '.[dev]'
+"$minimum_env/bin/python" -m ruff check scripts tests
+"$minimum_env/bin/python" -m mypy scripts
+"$minimum_env/bin/python" -B -m unittest discover -s tests -v
+```
+
+Execute the notebook from a fresh kernel and build a wheel into unique temporary
+locations:
+
+```bash
+notebook_run_dir="$(mktemp -d)"
+wheel_dir="$(mktemp -d)"
+python -m jupyter nbconvert --to notebook --execute \
+  --output-dir="$notebook_run_dir" \
   --ExecutePreprocessor.timeout=120 \
   notebooks/Factored_MDP_Demo.ipynb
-python -m json.tool /tmp/Factored_MDP_Demo.executed.ipynb > /dev/null
-~~~
-
-Build the distribution in isolation:
-
-~~~bash
-python -m pip wheel --no-deps --wheel-dir /tmp/ewm-wheel .
+python -m pip wheel --no-deps --wheel-dir "$wheel_dir" .
 python -m pip check
-~~~
+```
 
-### Maintainer bootstrap verification
+Expected results are clean Ruff and mypy output, `Ran 33 tests ... OK`, passing
+hooks, a notebook with nine sequentially executed code cells and no errors, and
+a wheel containing Apache-2.0 license metadata and the license file.
 
-The one-time remote workflow used:
-
-~~~bash
-gh auth login --hostname github.com --git-protocol https --web
-gh repo create nquaz/evolving-world-models \
-  --public \
-  --source=. \
-  --remote=origin \
-  --description 'Transition-model foundations for studying how world-model objectives shape downstream control.'
-git remote -v
-git push --set-upstream origin main
-gh run list --repo nquaz/evolving-world-models --workflow quality.yml
-~~~
-
-Do not run the repository-creation command for an existing remote. Never place
-an authentication token in a shell argument, log, notebook, or tracked file.
+The one-time remote bootstrap used `gh repo create` for the confirmed public
+repository, added `origin`, pushed `main`, and inspected the resulting workflow
+with `gh run list`. Do not repeat repository creation for an existing remote.
 
 ## Methods
 
-### Snapshot audit
+### Quality pipeline and baseline repairs
 
-The candidate initial snapshot was enumerated with Git-aware and no-ignore file
-searches. File sizes, symlinks, executable bits, generated caches, credential-
-like filenames, private-key headers, and common service-token patterns were
-checked. The scan found no likely credentials, symlinks, special files, or
-unignored files over 1 MiB. This was a targeted regex and filesystem audit, not
-a substitute for a dedicated secret-scanning product.
+Ruff supplies both linting and formatting, avoiding overlapping Black, isort,
+and Flake8 configurations. Rules `E4`, `E7`, `E9`, `F`, `I`, and `B` target
+syntax, import ordering, and common correctness defects without forcing a broad
+style migration. Ruff targets Python 3.9 with an 88-character line length.
 
-Generated mypy, Ruff, bytecode, and editable-install artifacts were confirmed
-ignored. The ignore policy was expanded for local environment files, additional
-virtual-environment layouts, coverage/test output, editors, and operating-system
-artifacts without broadly ignoring research data or result directories.
+Mypy runs in strict mode over the three production modules. The first pass found
+13 issues; repairs added precise generic and collection types, separated reused
+runtime type variables, and made already-validated finite domains explicit to
+the type checker. No unsafe casts or transition-semantic changes were added.
 
-### Publication cleanup
+The first Ruff pass found eight issues: four unsorted import blocks, one unused
+import, and three assigned lambdas in tests. Imports were organized, the unused
+import was removed, the lambdas became equivalent nested helpers, and Python
+files were formatted.
 
-The missing docs/drawing.md contract was reconstructed from the implementation
-and tests. The demonstration notebook was changed to avoid printing its absolute
-checkout path, given a standalone figure caption, and re-executed top-to-bottom.
-The resulting nine code cells had sequential execution counts, zero error
-outputs, one retained inline figure, and no machine-specific path string.
+Pre-commit checks whitespace, line endings, TOML/YAML/JSON, conflicts, symlinks,
+large additions, debug statements, private keys, Ruff, formatting, and mypy.
+Pre-push adds all unit tests and Python compilation in the caller's development
+environment.
 
-Three intentionally retained historical path references were identified in
-AGENTS.md and docs/logs/2026-07-21-code-quality-pipeline.md. The user was
-explicitly informed that these references, along with source, notebook outputs,
-documentation, logs, and commit metadata, would become public.
+### Repository and hook validation
 
-### Licensing and packaging
+The checkout initially had an empty, unusable `.git` directory. Before the user
+confirmed this was a new repository, real hooks were validated in an isolated
+temporary Git repository instead of fabricating live history. After that
+confirmation, Git was initialized on `main`, both hook stages were installed,
+and the candidate snapshot was staged and reviewed explicitly.
 
-The root LICENSE is byte-for-byte equal to GitHub's canonical Apache-2.0
-template. pyproject.toml declares the SPDX expression Apache-2.0 and explicitly
-lists LICENSE under PEP 639 metadata, with setuptools 77.0.3 or newer as the
-minimum supporting backend.
+### Publication, notebook, and packaging audit
 
-An isolated wheel build produced Core Metadata 2.4 with
-License-Expression: Apache-2.0 and License-File: LICENSE. Inspection confirmed
-that the wheel contains its license under the distribution metadata licenses
-directory.
+Git-aware and no-ignore scans covered filenames, sizes, symlinks, executable
+bits, private-key headers, common token patterns, caches, environments, and
+generated outputs. No likely credential, special file, or unignored file over
+1 MiB was found. This targeted audit was not an entropy-based secret scan.
 
-### Commit construction
+Ignore rules were expanded narrowly for local environments, coverage and test
+outputs, editor files, and operating-system artifacts. Missing drawing
+documentation was reconstructed from implementation and tests. The notebook
+stopped printing an absolute checkout path, gained a standalone figure caption,
+and was re-executed into nine sequential code cells with zero errors and one
+intentional inline figure.
 
-The initial baseline was committed as:
+`LICENSE` matched GitHub's canonical Apache-2.0 template byte-for-byte.
+`pyproject.toml` records the SPDX expression and includes the license through
+PEP 639 metadata. The isolated wheel used Core Metadata 2.4 and contained both
+`License-Expression: Apache-2.0` and the license file.
 
-- 73092a3: Initialize evolving world-model foundation
+### Commit and CI construction
 
-The CI addition was kept separate:
+The published history at the time of this consolidation is:
 
-- 6cf6a27: Add GitHub Actions quality checks
+- `73092a3` — Initialize evolving world-model foundation
+- `6cf6a27` — Add GitHub Actions quality checks
+- `a8156da` — Document public repository bootstrap
+- `8875d31` — Fix README math rendering
 
-Both commits ran the configured hooks without bypasses. The final pre-publication
-worktree was clean, and the local and remote main references both resolved to
-6cf6a275d281a66e055ed06de179ff301f8bf725 before this log was added.
+The Quality workflow runs on pushes to `main`, pull requests, and manual
+dispatch. It grants read-only contents permission, disables persisted checkout
+credentials, cancels superseded runs, and limits matrix jobs to 20 minutes.
+Third-party actions are pinned to immutable revisions:
 
-### CI design
+- `actions/checkout` v6.0.2:
+  `de0fac2e4500dabe0009e67214ff5f5447ce83dd`
+- `actions/setup-python` v6.2.0:
+  `a309ff8b426b58ec0e2a45f0f869d46889d02405`
 
-The Quality workflow runs on pushes to main, pull requests, and manual
-dispatches. It has read-only contents permission, disables persisted checkout
-credentials, cancels superseded runs in the same concurrency group, and limits
-each matrix job to 20 minutes.
-
-Third-party actions are pinned to immutable commits:
-
-- actions/checkout v6.0.2:
-  de0fac2e4500dabe0009e67214ff5f5447ce83dd
-- actions/setup-python v6.2.0:
-  a309ff8b426b58ec0e2a45f0f869d46889d02405
-
-Each Python job validates configuration and notebook JSON, runs Ruff and mypy,
-runs all unit tests and compilation checks, executes the notebook from a fresh
-kernel, checks the installed environment, and builds a wheel. The workflow was
-validated locally with checksum-verified actionlint 1.7.12 before publication.
+Each matrix job validates configuration and notebook JSON, checks Ruff and
+mypy, runs tests and compilation, executes the notebook from a fresh kernel,
+checks the installed environment, and builds a wheel. Checksum-verified
+`actionlint` 1.7.12 validated the workflow before publication.
 
 ### Public-disclosure authorization
 
-The first repository-creation attempt was rejected by an external-data
-safeguard because a public repository exposes workspace content to an untrusted
-external destination. No workaround or indirect publication attempt was made.
-The user was informed of the exact disclosure categories and the three retained
-local-path references, then explicitly confirmed public publication. Only after
-that confirmation was the repository created and main pushed.
+An initial public-repository request was rejected by an external-data safeguard.
+Work stopped while the user was shown the source, notebook output,
+documentation, log, commit-metadata, and retained historical-path disclosure
+scope. The public repository was created only after explicit confirmation.
+
+## Validation and quality checks
+
+Validation covered clean Python 3.9 installation, direct Ruff/format/mypy/test
+and compilation commands, both hook stages, notebook JSON and fresh execution,
+wheel contents and metadata, actionlint, staged-content and credential scans,
+remote identity, local/remote revision equality, and both GitHub Actions matrix
+jobs. Formatting and typing changes were compared with temporary pre-change
+copies before publication.
 
 ## Results
 
 | Check | Scope | Result |
 | --- | --- | --- |
-| Credential/artifact audit | Initial snapshot | No likely secret or unintended large file found |
-| Ruff lint | scripts and tests | Passed |
-| Ruff format check | 5 Python files | Passed |
+| Clean `.[dev]` installation | Python 3.9.21 | Passed |
+| Ruff lint and format | Python 3.9 and 3.12 | Passed |
 | Strict mypy | 3 production modules | Passed |
-| Unit tests | 33 tests | Passed |
-| Python compilation | scripts and tests | Passed |
-| Notebook structural validation | Committed notebook | Passed |
-| Notebook clean execution | 9 code cells | Passed; 0 errors, 1 figure |
-| Pre-commit stage | All files | Passed |
-| Pre-push stage | All files | Passed |
-| Isolated wheel build | Python 3.12 | Passed; Apache metadata and file present |
-| Remote identity | nquaz/evolving-world-models | Public, default branch main |
-| Remote SHA check | origin/main | Matched 6cf6a275 before this log |
-| GitHub Actions Python 3.9 | Run 29878570532 | Passed in 51 seconds |
-| GitHub Actions Python 3.12 | Run 29878570532 | Passed in 35 seconds |
+| Unit tests | 33 tests, Python 3.9 | Passed in 0.678 s |
+| Unit tests | 33 tests, Python 3.12 | Passed in 0.522 s |
+| Hook stages | Temporary and live repositories | Passed |
+| Compilation and notebook JSON | Python 3.9/3.12 as applicable | Passed |
+| Fresh notebook execution | 9 code cells | Passed; 0 errors, 1 figure |
+| Isolated wheel | Python 3.12 | Passed; Apache metadata present |
+| Publication audit | Initial snapshot | No likely secret or unintended large file found |
+| GitHub Actions 29878570532 | Python 3.9 / 3.12 | Passed in 51 s / 35 s |
+| GitHub Actions 29879593300 | Python 3.9 / 3.12 | Passed in 47 s / 39 s |
 
-The initial GitHub Actions run completed successfully at
-https://github.com/nquaz/evolving-world-models/actions/runs/29878570532.
-Every named step passed for both matrix jobs, including dependency installation,
-fresh-kernel notebook execution, and wheel construction.
+Run 29878570532 validated revision `6cf6a27`. Run 29879593300 validated
+`8875d31`; it passed every source, test, notebook, and packaging gate but did
+not detect the client-side README macro failure described below. These are
+deterministic software checks, so sampling uncertainty is not applicable.
+
+## Figures and tables
+
+No new research figure was produced. The notebook retained one explanatory
+network figure after fresh execution. The table above reports deterministic
+checks and observed runtimes; uncertainty intervals and metric direction are
+not applicable.
 
 ## Conclusions
 
-The project now has a public, licensed, and independently validated baseline.
-Local hooks provide fast feedback before commits and pushes, while GitHub
-Actions repeats non-mutating checks in clean Python 3.9 and 3.12 environments.
-The successful first remote run demonstrates that the repository can be cloned,
-installed, tested, executed, and packaged outside the originating workspace.
+The project became a public, licensed baseline that can be cloned, installed,
+tested, executed, and packaged in clean Python 3.9 and 3.12 environments. Local
+hooks provide rapid feedback, and CI independently enforces the source,
+behavioral, notebook, and packaging contracts.
 
-Separating the foundation and CI commits preserved a truthful initial history.
-Explicit disclosure review, privacy-preserving author metadata, immutable action
-pins, read-only workflow permissions, and package-license inspection materially
-reduced avoidable publication and supply-chain risks.
+The README regression demonstrates a narrower conclusion: valid Markdown
+delimiters and passing source-level CI do not prove that every LaTeX command is
+accepted by GitHub's downstream client renderer. Live rendering needs either a
+compatible-command policy or dedicated browser-level validation.
 
-## Limitations
+## Limitations and threats to validity
 
-- The credential scan used targeted patterns and pre-commit's private-key check;
-  it was not a full historical or entropy-based secret scan.
-- Optional scientific and notebook dependencies use compatible version ranges
-  rather than a complete environment lock, so future resolutions may differ.
-- CI covers Python 3.9 and 3.12, not every interpreter satisfying Python 3.9 or
-  newer.
-- ubuntu-24.04 is named explicitly, but the hosted runner image evolves.
-- The three disclosed historical checkout-path references remain public by
-  informed choice.
-- Branch protection, required status checks, Dependabot, a SECURITY policy,
-  release automation, and artifact attestations are not yet configured.
-- A single successful remote run establishes bootstrap viability, not long-term
-  reliability.
+- The credential audit was targeted rather than historical or entropy-based.
+- Compatible dependency ranges are not a complete lock, so future resolutions
+  may differ.
+- CI covers Python 3.9 and 3.12, not every supported interpreter.
+- The named hosted-runner image evolves over time.
+- Strict mypy covers production modules, not tests and notebooks.
+- CI validates Markdown source but does not execute GitHub's math renderer.
+- Branch protection, required checks, dependency automation, `SECURITY.md`,
+  release automation, and artifact attestations remain unconfigured.
+- Two successful CI runs establish bootstrap viability, not long-term
+  reliability or scientific validity.
 
-## Deviations and issues
+## Deviations, failures, and negative results
 
-The live checkout originally contained an empty, read-only .git directory.
-After the user confirmed that this was a new repository, the empty directory was
-made writable and Git was initialized on main. No history was reconstructed.
+- Mypy 1.20.2 and pre-commit 4.6.0 did not install on Python 3.9; the final
+  compatible pins are mypy 1.19.1 and pre-commit 4.3.0.
+- Initial hook validation encountered a read-only cache, a wrong temporary-
+  repository working directory, and sandboxed dependency downloads. A writable
+  `PRE_COMMIT_HOME`, the correct working directory, and approved network access
+  resolved those failures.
+- A Python 3.9 run emitted a non-fatal duplicate NetworkX backend warning; all
+  visualization tests passed.
+- The initial empty `.git` directory prevented live revision checks and hooks.
+  No history was fabricated before the user confirmed a new repository.
+- Notebook execution initially encountered a read-only Jupyter configuration
+  path; a temporary configuration directory resolved it. An `Agg` backend run
+  suppressed the intended inline figure, so the cell was made explicitly inline
+  and re-executed.
+- Public repository creation paused at the disclosure safeguard until the user
+  explicitly confirmed publication.
+- Commit `8875d31` replaced unsupported `\(...\)` and `\[...\]` delimiters but
+  retained `\operatorname`, which GitHub's live renderer rejects. Local source
+  checks, the raw Markdown API, pre-push hooks, and CI did not expose that
+  downstream restriction.
+- The assistant inferred commit-and-push authorization for `8875d31` from an
+  earlier general workflow discussion. That inference was too broad. The local
+  `AGENTS.md` correction now requires fresh, action-specific, one-shot commands.
 
-The first notebook execution attempt tried to create Jupyter configuration in a
-read-only home location. Temporary Jupyter directories resolved that
-environmental issue. A subsequent headless run using MPLBACKEND=Agg suppressed
-the intended inline figure; the visualization cell was made explicitly inline
-and re-executed, restoring the figure without a redundant Axes representation.
+## Addendum: README renderer correction
 
-The first public-repository creation request was rejected by the publication
-safeguard. Work stopped at that boundary until explicit informed confirmation
-was received.
+Date/time: 2026-07-21T20:22:02-04:00
 
-## Artifacts
+GitHub displayed "the following macros is not allowed: operatorname" for each
+README expression containing `\operatorname`.
+[GitHub markup issue 1688](https://github.com/github/markup/issues/1688)
+records the same downstream renderer limitation. The local correction replaces
+`\operatorname{pa}` with base MathJax `\mathrm{pa}` in `README.md` and
+`AGENTS.md`; the older July 20 log also receives GitHub-compatible delimiters
+and notation.
 
-- LICENSE: canonical Apache License 2.0 terms.
-- pyproject.toml: project, dependency, tool, and PEP 639 license metadata.
-- .pre-commit-config.yaml: pinned pre-commit and pre-push gates.
-- .github/workflows/quality.yml: read-only Python matrix CI.
-- README.md: installation, API, verification, CI, and license overview.
-- AGENTS.md: repository engineering and research-production policy.
-- docs/drawing.md: exact visualization semantics and API contract.
-- notebooks/Factored_MDP_Demo.ipynb: executed worked example and figure.
-- docs/logs/2026-07-21-code-quality-pipeline.md: local quality-pipeline study.
+This correction also consolidates the two July 21 logs and strengthens the Git
+authorization policy. The changes were initially left uncommitted and unpushed
+because the editing request did not authorize either action. At
+2026-07-21T20:33:23-04:00, the user issued a fresh, explicit command to commit
+and push this corrective change; this log is included in that authorized commit.
 
 ## Next directions
 
-1. Decide and document branch-protection and required-status-check policy after
-   confirming the preferred solo- or multi-contributor workflow.
-2. Add Dependabot or an equivalent reviewed dependency-update process for Python
-   packages, pre-commit hooks, and GitHub Actions.
-3. Add SECURITY.md, CONTRIBUTING.md, issue templates, and pull-request guidance
-   before soliciting external contributions.
-4. Define a release policy, versioning rules, changelog format, package build
-   provenance, and artifact-attestation workflow before the first release.
-5. Evaluate a lock or constraint strategy for exact long-term experiment
-   replication while retaining minimum-version compatibility testing.
-6. Add current-Python coverage beyond 3.12 when the dependency stack is
-   validated, and periodically test the lowest supported dependency versions.
-7. Continue the scientific roadmap with rewards, Bayesian transition beliefs,
-   learning objectives, downstream-task distributions, preregistered
-   experiments, machine-readable result tables, and publication-quality figures.
+1. Confirm the live README renders without the macro error after the explicitly
+   authorized push.
+2. Add a small documentation check that rejects known unsupported GitHub math
+   macros, while recognizing that it cannot replace the downstream renderer.
+3. Decide on branch protection and required status checks.
+4. Add reviewed dependency automation, `SECURITY.md`, and contribution guidance.
+5. Evaluate lock or constraints files for long-term experiment replication.
+6. Continue the scientific roadmap with rewards, Bayesian transition beliefs,
+   objectives, downstream-task distributions, preregistered experiments, saved
+   result tables, and publication-quality figures.
+
+## Change and artifact summary
+
+The milestone added or materially changed the quality configuration, packaging
+metadata, ignore rules, production typing, test formatting, licensing, CI,
+README, notebook, drawing documentation, and repository policy. Temporary
+virtual environments, hook caches, notebook executions, wheels, and validation
+repositories remained outside the project.
+
+This consolidation keeps
+`docs/logs/2026-07-21-public-repository-bootstrap.md` as the canonical July 21
+record and removes the redundant
+`docs/logs/2026-07-21-code-quality-pipeline.md`. The corrective commit also
+touches `AGENTS.md`, `README.md`, and `docs/logs/2026-07-20.md`.
+
+## Verification
+
+The historical milestone passed these direct checks:
+
+```bash
+pre-commit validate-config .pre-commit-config.yaml
+python -m ruff check scripts tests
+python -m ruff format --check scripts tests
+python -m mypy scripts
+python -B -m unittest discover -s tests -v
+python -m compileall -q scripts tests
+python -m json.tool notebooks/Factored_MDP_Demo.ipynb > /dev/null
+pre-commit run --all-files
+pre-commit run --all-files --hook-stage pre-push
+```
+
+Both named CI runs passed their complete Python 3.9/3.12 matrices. The addendum
+corrections also passed:
+
+```bash
+git diff --check
+rg -n -F '\operatorname{' README.md AGENTS.md docs/logs/2026-07-20.md
+pre-commit run --all-files
+pre-commit run --all-files --hook-stage pre-push
+```
+
+The scoped `rg` command returned no matches, so none of the affected rendered
+math invokes the unsupported macro. Both hook stages passed every applicable
+check. The verification commands themselves made no commit or remote mutation;
+those subsequent actions received the separate one-shot authorization recorded
+above.
