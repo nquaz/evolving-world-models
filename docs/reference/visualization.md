@@ -343,8 +343,10 @@ A suitable standalone caption is:
 - factor nodes, when present, in layer 1; and
 - next variables in layer 2.
 
-Nodes within each layer use stable declared order and are centered vertically.
-Arbitrary NetworkX layout names such as `"spring"` are not accepted.
+Nodes within each layer use stable declared order. Non-singleton layers span the
+same vertical range as the densest layer so automatically enlarged factor
+markers do not crowd at the center; a singleton remains centered. Arbitrary
+NetworkX layout names such as `"spring"` are not accepted.
 
 A custom layout must be a mapping containing every graph node:
 
@@ -393,10 +395,24 @@ A node-specific label takes precedence over a variable-name label.
 Variable-name labels apply to each node for that variable unless overridden.
 Domain text is appended after resolving the custom label.
 
-NetworkX stores full factor labels. Matplotlib drawing wraps an unmodified
-factor label into a compact form such as `P(weather′\n| ·)` because incoming
-arrows already show the conditioning scope. An explicit factor-node label
-override is not wrapped.
+NetworkX stores full factor labels. Matplotlib drawing compacts an unmodified
+factor label into a single-line form such as `P(weather′|·)` because arrows
+already show the conditioning scope. When `node_size` is omitted, all factor
+squares use a common area large enough to contain the widest resolved factor
+label. Explicit factor-node label overrides remain verbatim, including blank,
+whitespace-only, and multiline labels, and participate in automatic sizing.
+
+Supplying `node_size` disables automatic factor growth and sets the exact,
+uniform marker area for every node role. This lets callers control marker sizes
+directly when composing a figure with a custom layout.
+
+Directed edges terminate at boundaries computed from each endpoint's resolved
+marker size and shape, preserving visible arrowheads when different roles use
+circles, diamonds, and squares. Boundary calculations are exact for those
+default shapes. Other built-in markers use a conservative circumscribed-square
+clearance; custom `Path` markers use that same approximate fallback.
+Establish the final figure size and axes layout before drawing, or redraw after
+an operation that materially changes the axes geometry.
 
 `labels` must be a mapping. Unknown node or variable keys raise `ValueError`.
 
@@ -419,7 +435,7 @@ Only the following keyword options are accepted:
 
 | Option | Default |
 | --- | --- |
-| `node_size` | `2300` |
+| `node_size` | `2300` pt²; optional automatic factor growth |
 | `font_size` | `9` |
 | `font_color` | `"#111111"` |
 | `edge_color` | `"#555555"` |
@@ -436,7 +452,11 @@ Only the following keyword options are accepted:
 | `factor_shape` | `"s"` |
 | `next_shape` | `"o"` |
 
-Values are forwarded to the corresponding NetworkX drawing operations.
+Style values are forwarded to the corresponding NetworkX drawing operations
+after the factor-sizing and marker-aware edge-clipping behavior described
+above. `node_size` and `font_size` must be finite nonnegative scalars.
+Iterable `edge_color`, `width`, and `arrowsize` values are applied per edge and
+cycle independently within the solid and dashed edge groups.
 Unsupported option names raise `ValueError` rather than being silently ignored.
 
 For publication use, choose the final figure size before tuning text and node

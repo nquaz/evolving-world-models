@@ -1,8 +1,25 @@
-"""Optional visualization adapters for MDP transition structure.
+"""Optional, deterministic views of MDP transition structure.
 
-The transition-model core remains dependency-free.  Functions in this module
-import NetworkX, Matplotlib, and Graphviz only when their corresponding public
-methods are called.
+This module converts :mod:`scripts.mdp` models into two-slice NetworkX graphs,
+draws those graphs on caller-owned Matplotlib axes, and exports equivalent
+Graphviz descriptions.  It visualizes declared transition scopes rather than
+probability values, learned parameters, rewards, beliefs, or planning results.
+The reusable entry points are :func:`to_networkx`, :func:`draw_mdp`, and
+:func:`to_graphviz`; model instances expose the same behavior through
+``model.to_networkx()``, ``model.draw()``, and ``model.to_graphviz()``.
+
+Graph construction and the layered layout preserve model declaration order.
+Factor graphs distinguish current variables, external parents, transition
+factors, and next variables.  Matplotlib rendering may compact generated factor
+labels while retaining complete formulas in NetworkX node metadata.  Drawing
+creates artists but never calls ``show()`` or saves a file; Graphviz conversion
+builds an in-memory description without invoking a renderer.
+
+The transition-model core remains dependency-free.  NetworkX, Matplotlib, and
+Graphviz are imported only when the corresponding adapter is called, and a
+missing optional dependency raises an installation-oriented ``ImportError``.
+Graph conversion and artist creation are linear in the generated nodes and
+edges, aside from backend rendering costs and label glyph measurement.
 """
 
 from __future__ import annotations
@@ -10,6 +27,7 @@ from __future__ import annotations
 import importlib
 import json
 from collections.abc import Mapping
+from math import hypot, isfinite, sqrt
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
 from .mdp import AbstractFactoredMDP, AbstractMDP, Variable
@@ -24,7 +42,9 @@ _ROLE_STYLES = {
     "next": {"color": "#A1D99B", "shape": "o"},
 }
 
-_DRAW_DEFAULTS = {
+_FACTOR_LABEL_PADDING = 1.45
+
+_DRAW_DEFAULTS: Dict[str, Any] = {
     "node_size": 2300,
     "font_size": 9,
     "font_color": "#111111",
@@ -238,6 +258,7 @@ def _layered_layout(graph: Any) -> Dict[Any, Tuple[float, float]]:
     for node, attributes in graph.nodes(data=True):
         layers.setdefault(int(attributes["layer"]), []).append(node)
 
+    vertical_span = float(max((len(nodes) for nodes in layers.values()), default=1) - 1)
     for layer, nodes in layers.items():
         nodes.sort(
             key=lambda node: (
@@ -245,9 +266,12 @@ def _layered_layout(graph: Any) -> Dict[Any, Tuple[float, float]]:
                 repr(node),
             )
         )
-        midpoint = (len(nodes) - 1) / 2.0
+        spacing = vertical_span / (len(nodes) - 1) if len(nodes) > 1 else 0.0
         for index, node in enumerate(nodes):
-            positions[node] = (float(layer), midpoint - index)
+            positions[node] = (
+                float(layer),
+                vertical_span / 2.0 - index * spacing,
+            )
     return positions
 
 
@@ -270,6 +294,123 @@ def _domain_text(domain: Optional[Sequence[Any]]) -> str:
     return "{" + ", ".join(repr(value) for value in domain) + "}"
 
 
+def _finite_nonnegative_float(value: Any, option: str) -> float:
+    """Return a finite nonnegative scalar style value."""
+
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as error:
+        raise TypeError(
+            "{} must be a finite nonnegative scalar.".format(option)
+        ) from error
+    if not isfinite(result) or result < 0.0:
+        raise ValueError("{} must be a finite nonnegative scalar.".format(option))
+    return result
+
+
+def _label_extent_points(text: str, font_size: float) -> Tuple[float, float]:
+    """Return an approximate multiline text extent in Matplotlib points."""
+
+    if not text.strip() or font_size <= 0.0:
+        return 0.0, 0.0
+
+    textpath = _require_module("matplotlib.textpath", "viz", "draw()")
+    font_manager = _require_module("matplotlib.font_manager", "viz", "draw()")
+    font_properties = font_manager.FontProperties(family=["sans-serif"])
+    line_widths = []
+    line_heights = []
+    lines = text.split("\n")
+    for line in lines:
+        if not line.strip():
+            line_widths.append(0.0)
+            line_heights.append(0.0)
+            continue
+        path = textpath.TextPath(
+            (0.0, 0.0),
+            line,
+            size=font_size,
+            prop=font_properties,
+        )
+        bounds = path.get_extents()
+        line_widths.append(float(bounds.width))
+        line_heights.append(float(bounds.height))
+
+    width = max(line_widths, default=0.0)
+    glyph_height = max(line_heights, default=0.0)
+    line_spacing = max(0, len(lines) - 1) * font_size * 1.2
+    return width, glyph_height + line_spacing
+
+
+def _factor_node_size_for_labels(
+    factor_labels: Mapping[Any, str],
+    font_size: float,
+    base_node_size: float,
+) -> float:
+    """Choose a square marker area that fits the widest factor label."""
+
+    if not factor_labels:
+        return float(base_node_size)
+
+    required_side = 0.0
+    for label in factor_labels.values():
+        width, height = _label_extent_points(label, font_size)
+        required_side = max(
+            required_side,
+            max(width, height) * _FACTOR_LABEL_PADDING,
+        )
+    if required_side == 0.0:
+        return float(base_node_size)
+    required_area = required_side**2
+    return max(float(base_node_size), required_area)
+
+
+def _marker_edge_margin(
+    node_size: float,
+    node_shape: Any,
+    direction: Tuple[float, float],
+) -> float:
+    """Estimate marker clearance along an edge, in points.
+
+    The calculation is exact for the default circle, square, and diamond
+    markers. Other marker styles use a circumscribed-square fallback.
+    """
+
+    dx, dy = direction
+    length = hypot(dx, dy)
+    half_side = sqrt(max(0.0, node_size)) / 2.0
+    if length == 0.0 or half_side == 0.0:
+        return half_side
+
+    abs_x = abs(dx / length)
+    abs_y = abs(dy / length)
+    if node_shape == "s":
+        return half_side / max(abs_x, abs_y)
+    if node_shape == "D":
+        diamond_radius = sqrt(2.0) * half_side
+        return diamond_radius / (abs_x + abs_y)
+    if node_shape == "o":
+        return half_side
+    return sqrt(2.0) * half_side
+
+
+def _style_value_for_edge(value: Any, index: int, option: str) -> Any:
+    """Select one edge-style value while preserving scalar colors."""
+
+    if isinstance(value, (str, bytes)):
+        return value
+    if option == "edge_color":
+        colors = _require_module("matplotlib.colors", "viz", "draw()")
+        if colors.is_color_like(value):
+            return value
+    try:
+        values = tuple(value)
+    except TypeError:
+        return value
+    if not values:
+        raise ValueError("{} sequence must not be empty.".format(option))
+    return values[index % len(values)]
+
+
 def _wrapped_factor_label(label: str) -> str:
     """Compact a conditional-kernel label to fit inside a square node.
 
@@ -277,10 +418,13 @@ def _wrapped_factor_label(label: str) -> str:
     formula remains available in the NetworkX ``label`` attribute.
     """
 
-    if " | " not in label:
+    if not label.startswith("P(") or not label.endswith(")"):
         return label
-    outputs, _ = label.split(" | ", 1)
-    return "{}\n| ·)".format(outputs)
+    inner = label[2:-1]
+    if " | " not in inner:
+        return label
+    outputs, _ = inner.split(" | ", 1)
+    return "P({}|·)".format(outputs.strip())
 
 
 def _node_labels(
@@ -336,7 +480,32 @@ def draw_mdp(
     labels: Optional[Mapping[Any, str]] = None,
     **style: Any,
 ) -> Any:
-    """Draw an MDP without showing or saving the Matplotlib figure."""
+    """Draw an MDP without showing or saving the Matplotlib figure.
+
+    When ``node_size`` is omitted, factor squares may grow to contain their
+    resolved labels.  Supplying ``node_size`` sets one exact marker area for
+    every role and disables automatic factor growth.
+
+    Args:
+        model: Transition model whose two-slice structure will be drawn.
+        ax: Optional caller-owned Matplotlib axes. A new axes is created when
+            omitted.
+        view: ``"factor"`` to retain transition-factor nodes or
+            ``"dependencies"`` for direct possible-dependency edges.
+        layout: ``"layered"`` or a complete node-to-position mapping.
+        show_domains: Whether to append finite variable domains to labels.
+        labels: Optional overrides keyed by exact node ID or variable name.
+        **style: Validated drawing options documented in
+            ``docs/reference/visualization.md``.
+
+    Returns:
+        The Matplotlib axes containing the generated artists.
+
+    Raises:
+        ImportError: If an optional drawing dependency is unavailable.
+        TypeError: If labels or scalar size options have invalid types.
+        ValueError: If the view, layout, labels, or style values are invalid.
+    """
 
     unknown_style = sorted(set(style) - set(_DRAW_DEFAULTS))
     if unknown_style:
@@ -347,6 +516,8 @@ def draw_mdp(
         )
     options = dict(_DRAW_DEFAULTS)
     options.update(style)
+    base_node_size = _finite_nonnegative_float(options["node_size"], "node_size")
+    font_size = _finite_nonnegative_float(options["font_size"], "font_size")
 
     graph = to_networkx(model, view=view)
     nx = _require_module("networkx", "viz", "draw()")
@@ -355,6 +526,30 @@ def draw_mdp(
         _, ax = pyplot.subplots()
 
     positions = _resolve_layout(graph, layout)
+    resolved_labels = _node_labels(graph, labels, show_domains)
+    factor_nodes = [
+        node
+        for node, attributes in graph.nodes(data=True)
+        if attributes["kind"] == "factor"
+    ]
+    factor_labels = {
+        node: resolved_labels[node] for node in factor_nodes if node in resolved_labels
+    }
+    factor_node_size = base_node_size
+    if factor_labels and "node_size" not in style:
+        factor_node_size = _factor_node_size_for_labels(
+            factor_labels,
+            font_size,
+            base_node_size,
+        )
+    node_sizes = {
+        node: (factor_node_size if attributes["kind"] == "factor" else base_node_size)
+        for node, attributes in graph.nodes(data=True)
+    }
+    node_shapes = {
+        node: options["{}_shape".format(attributes["role"])]
+        for node, attributes in graph.nodes(data=True)
+    }
     for role in ("current", "parent", "factor", "next"):
         nodes = [
             node
@@ -363,6 +558,7 @@ def draw_mdp(
         ]
         if not nodes:
             continue
+        role_node_size = factor_node_size if role == "factor" else base_node_size
         nx.draw_networkx_nodes(
             graph,
             positions,
@@ -370,11 +566,23 @@ def draw_mdp(
             nodelist=nodes,
             node_color=options["{}_color".format(role)],
             node_shape=options["{}_shape".format(role)],
-            node_size=options["node_size"],
+            node_size=role_node_size,
             alpha=options["alpha"],
             linewidths=options["linewidths"],
             edgecolors="#444444",
         )
+
+    # Finalize and temporarily freeze the adapter-owned limits before
+    # converting data-space edge directions to display-space clearances.
+    # NetworkX updates data limits after each draw_networkx_edges() call; if
+    # autoscaling stayed active, later edges would use a different transform.
+    ax.margins(0.15)
+    x_limits = ax.get_xlim()
+    y_limits = ax.get_ylim()
+    autoscale_x = ax.get_autoscalex_on()
+    autoscale_y = ax.get_autoscaley_on()
+    ax.set_autoscalex_on(False)
+    ax.set_autoscaley_on(False)
 
     external_edges: List[Tuple[Any, Any]] = []
     regular_edges: List[Tuple[Any, Any]] = []
@@ -384,34 +592,68 @@ def draw_mdp(
             external_edges if input_kind == "external_parent" else regular_edges
         )
         target_list.append((source, target))
-    for edges, line_style in (
-        (regular_edges, "solid"),
-        (external_edges, "dashed"),
-    ):
-        if not edges:
-            continue
-        nx.draw_networkx_edges(
-            graph,
-            positions,
-            ax=ax,
-            edgelist=edges,
-            edge_color=options["edge_color"],
-            width=options["width"],
-            style=line_style,
-            arrows=True,
-            arrowsize=options["arrowsize"],
-            arrowstyle="-|>",
-            node_size=options["node_size"],
-        )
+    try:
+        for edges, line_style in (
+            (regular_edges, "solid"),
+            (external_edges, "dashed"),
+        ):
+            if not edges:
+                continue
+            for edge_index, (source, target) in enumerate(edges):
+                source_x, source_y = ax.transData.transform(positions[source])
+                target_x, target_y = ax.transData.transform(positions[target])
+                direction = (
+                    float(target_x - source_x),
+                    float(target_y - source_y),
+                )
+                source_margin = _marker_edge_margin(
+                    node_sizes[source],
+                    node_shapes[source],
+                    direction,
+                )
+                target_margin = _marker_edge_margin(
+                    node_sizes[target],
+                    node_shapes[target],
+                    (-direction[0], -direction[1]),
+                )
+                # NetworkX 3.2 accepts scalar margins only. Drawing each edge
+                # with its own clearances also avoids a one-size/one-shape
+                # assumption when circles, diamonds, and squares coexist.
+                nx.draw_networkx_edges(
+                    graph,
+                    positions,
+                    ax=ax,
+                    edgelist=[(source, target)],
+                    nodelist=[source, target],
+                    edge_color=_style_value_for_edge(
+                        options["edge_color"], edge_index, "edge_color"
+                    ),
+                    width=_style_value_for_edge(options["width"], edge_index, "width"),
+                    style=line_style,
+                    arrows=True,
+                    arrowsize=_style_value_for_edge(
+                        options["arrowsize"], edge_index, "arrowsize"
+                    ),
+                    arrowstyle="-|>",
+                    node_size=0.0,
+                    min_source_margin=source_margin,
+                    min_target_margin=target_margin,
+                )
+    finally:
+        # Preserve caller autoscaling behavior without allowing edge-by-edge
+        # data-limit updates to perturb this rendering pass.
+        ax.set_xlim(x_limits)
+        ax.set_ylim(y_limits)
+        ax.set_autoscalex_on(autoscale_x)
+        ax.set_autoscaley_on(autoscale_y)
     nx.draw_networkx_labels(
         graph,
         positions,
         ax=ax,
-        labels=_node_labels(graph, labels, show_domains),
-        font_size=options["font_size"],
+        labels=resolved_labels,
+        font_size=font_size,
         font_color=options["font_color"],
     )
-    ax.margins(0.15)
     ax.set_axis_off()
     return ax
 
