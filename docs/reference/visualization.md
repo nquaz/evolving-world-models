@@ -64,7 +64,7 @@ Prefer the inherited methods in application and notebook code.
 ## Runnable example
 
 This example creates two deterministic factors. `weather` is predicted by the
-first factor. The pantry factor reads the current weather synchronously, while
+first factor. The umbrella factor reads the current weather synchronously, while
 `season` and `action` remain external parents of the composite model.
 
 ```python
@@ -111,13 +111,13 @@ def identity_factor(
 
 
 weather = Variable("weather", ("sun", "rain"))
-pantry = Variable("pantry", ("empty", "full"))
+umbrella = Variable("umbrella", ("closed", "open"))
 season = Variable("season", ("dry", "wet"))
-action = Variable("action", ("wait", "shop"))
+action = Variable("action", ("open", "close"))
 
 weather_factor = identity_factor(weather, (season,))
-pantry_factor = identity_factor(pantry, (weather, season, action))
-world = FactoredMDP((weather_factor, pantry_factor))
+umbrella_factor = identity_factor(umbrella, (weather, season, action))
+world = FactoredMDP((weather_factor, umbrella_factor))
 ```
 
 Inspect the graph as structured data:
@@ -164,7 +164,7 @@ internal parents ──┘
 Each leaf factor represents its declared conditional kernel. For example,
 
 ```text
-P(pantry′ | pantry, weather, season, action)
+P(umbrella′ | umbrella, weather, season, action)
 ```
 
 The graph does not claim that every declared input has a nonzero effect in
@@ -189,7 +189,7 @@ assert not any(
 )
 assert dependencies.edges[
     ("current", "weather"),
-    ("next", "pantry"),
+    ("next", "umbrella"),
 ]["input_kind"] == "internal_parent"
 ```
 
@@ -311,10 +311,10 @@ world.draw(
     node_size=3_500,
     font_size=8,
 )
-ax.set_title("Weather–pantry transition structure")
+ax.set_title("Weather–umbrella transition structure")
 fig.tight_layout()
 fig.savefig(
-    "weather-pantry-transition-structure.png",
+    "weather-umbrella-transition-structure.png",
     dpi=300,
     bbox_inches="tight",
 )
@@ -329,7 +329,7 @@ quantitative meaning.
 
 A suitable standalone caption is:
 
-> Declared two-slice factor structure for the deterministic weather–pantry
+> Declared two-slice factor structure for the deterministic weather–umbrella
 > example. Circles denote current and next variables, diamonds denote external
 > parents, squares denote transition factors, and dashed arrows denote external
 > conditioning inputs. The diagram is structural and deterministic; sample
@@ -384,7 +384,7 @@ world.draw(
     labels={
         "weather": "Weather",
         ("next", "weather"): "Tomorrow's weather",
-        ("factor", (1,)): "Pantry transition",
+        ("factor", (1,)): "Umbrella transition",
     }
 )
 ```
@@ -457,7 +457,7 @@ Rendering is a separate, explicit operation:
 
 ```python
 output_path = dot.render(
-    "weather-pantry-transition-structure",
+    "weather-umbrella-transition-structure",
     format="svg",
     cleanup=True,
 )

@@ -59,19 +59,19 @@ def deterministic_kernel(
 class VisualizationFixture(unittest.TestCase):
     def setUp(self) -> None:
         self.weather = Variable("weather", ("sun", "rain"))
-        self.pantry = Variable("pantry", ("empty", "full"))
+        self.umbrella = Variable("umbrella", ("closed", "open"))
         self.season = Variable("season", ("dry", "wet"))
-        self.action = Variable("action", ("wait", "shop"))
+        self.action = Variable("action", ("open", "close"))
 
         self.weather_mdp = deterministic_kernel(
             self.weather,
             (self.season,),
         )
-        self.pantry_mdp = deterministic_kernel(
-            self.pantry,
+        self.umbrella_mdp = deterministic_kernel(
+            self.umbrella,
             (self.weather, self.season, self.action),
         )
-        self.mdp = FactoredMDP((self.weather_mdp, self.pantry_mdp))
+        self.mdp = FactoredMDP((self.weather_mdp, self.umbrella_mdp))
 
 
 class NetworkXStructureTests(VisualizationFixture):
@@ -97,25 +97,25 @@ class NetworkXStructureTests(VisualizationFixture):
                 "time": "t+1",
                 "label": "weather (t+1)",
             },
-            ("current", "pantry"): {
+            ("current", "umbrella"): {
                 "kind": "variable",
                 "role": "current",
                 "layer": 0,
                 "order": 1,
-                "variable": "pantry",
-                "domain": ("empty", "full"),
+                "variable": "umbrella",
+                "domain": ("closed", "open"),
                 "time": "t",
-                "label": "pantry (t)",
+                "label": "umbrella (t)",
             },
-            ("next", "pantry"): {
+            ("next", "umbrella"): {
                 "kind": "variable",
                 "role": "next",
                 "layer": 2,
                 "order": 1,
-                "variable": "pantry",
-                "domain": ("empty", "full"),
+                "variable": "umbrella",
+                "domain": ("closed", "open"),
                 "time": "t+1",
-                "label": "pantry (t+1)",
+                "label": "umbrella (t+1)",
             },
             ("parent", "season"): {
                 "kind": "variable",
@@ -133,7 +133,7 @@ class NetworkXStructureTests(VisualizationFixture):
                 "layer": 0,
                 "order": 3,
                 "variable": "action",
-                "domain": ("wait", "shop"),
+                "domain": ("open", "close"),
                 "time": "t",
                 "label": "action (t)",
             },
@@ -165,9 +165,9 @@ class NetworkXStructureTests(VisualizationFixture):
                     "factor_index": (1,),
                     "factor_path": (1,),
                     "factor_type": "TabularMDP",
-                    "variables": ("pantry",),
+                    "variables": ("umbrella",),
                     "parents": ("weather", "season", "action"),
-                    "label": "P(pantry′ | pantry, weather, season, action)",
+                    "label": "P(umbrella′ | umbrella, weather, season, action)",
                 },
             }
         )
@@ -203,7 +203,9 @@ class NetworkXStructureTests(VisualizationFixture):
                 (0,), "external_parent"
             ),
             (("factor", (0,)), ("next", "weather")): predicts((0,)),
-            (("current", "pantry"), ("factor", (1,))): condition((1,), "current_state"),
+            (("current", "umbrella"), ("factor", (1,))): condition(
+                (1,), "current_state"
+            ),
             (("current", "weather"), ("factor", (1,))): condition(
                 (1,), "internal_parent"
             ),
@@ -213,7 +215,7 @@ class NetworkXStructureTests(VisualizationFixture):
             (("parent", "action"), ("factor", (1,))): condition(
                 (1,), "external_parent"
             ),
-            (("factor", (1,)), ("next", "pantry")): predicts((1,)),
+            (("factor", (1,)), ("next", "umbrella")): predicts((1,)),
         }
         actual_edges = {
             (source, target): attributes
@@ -254,16 +256,16 @@ class NetworkXStructureTests(VisualizationFixture):
             (("parent", "season"), ("next", "weather")): dependency(
                 (0,), "external_parent"
             ),
-            (("current", "pantry"), ("next", "pantry")): dependency(
+            (("current", "umbrella"), ("next", "umbrella")): dependency(
                 (1,), "current_state"
             ),
-            (("current", "weather"), ("next", "pantry")): dependency(
+            (("current", "weather"), ("next", "umbrella")): dependency(
                 (1,), "internal_parent"
             ),
-            (("parent", "season"), ("next", "pantry")): dependency(
+            (("parent", "season"), ("next", "umbrella")): dependency(
                 (1,), "external_parent"
             ),
-            (("parent", "action"), ("next", "pantry")): dependency(
+            (("parent", "action"), ("next", "umbrella")): dependency(
                 (1,), "external_parent"
             ),
         }
@@ -306,7 +308,7 @@ class NetworkXStructureTests(VisualizationFixture):
         )
         self.assertEqual(
             factor_nodes[("factor", (0, 1))]["variables"],
-            ("pantry",),
+            ("umbrella",),
         )
         self.assertEqual(
             factor_nodes[("factor", (0, 0))]["factor_type"],
@@ -347,7 +349,7 @@ class DrawingTests(VisualizationFixture):
 
             self.assertIn("Weather\n{'sun', 'rain'}", rendered_labels)
             self.assertIn("Tomorrow's weather\n{'sun', 'rain'}", rendered_labels)
-            self.assertIn("pantry (t)\n{'empty', 'full'}", rendered_labels)
+            self.assertIn("umbrella (t)\n{'closed', 'open'}", rendered_labels)
             self.assertIn("P(weather′\n| ·)", rendered_labels)
         finally:
             plt.close(figure)
@@ -420,7 +422,7 @@ class GraphvizTests(VisualizationFixture):
         source = dot.source
         self.assertIn("rankdir=LR", source)
         self.assertIn("P(weather′ | weather, season)", source)
-        self.assertIn("P(pantry′ | pantry, weather, season, action)", source)
+        self.assertIn("P(umbrella′ | umbrella, weather, season, action)", source)
         self.assertIn('fillcolor="#D9D9D9"', source)
         self.assertIn("rank=same", source)
 

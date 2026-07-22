@@ -293,9 +293,9 @@ class TabularMDPTests(unittest.TestCase):
 class FactoredMDPTests(unittest.TestCase):
     def setUp(self) -> None:
         self.weather = Variable("weather", ("sun", "rain"))
-        self.pantry = Variable("pantry", ("empty", "full"))
+        self.umbrella = Variable("umbrella", ("closed", "open"))
         self.season = Variable("season", ("dry", "wet"))
-        self.action = Variable("action", ("wait", "shop"))
+        self.action = Variable("action", ("open", "close"))
 
         weather_rows = []
         for weather in self.weather.domain:
@@ -312,18 +312,20 @@ class FactoredMDPTests(unittest.TestCase):
                     )
                 )
 
-        pantry_rows = []
-        for pantry in self.pantry.domain:
+        umbrella_rows = []
+        for umbrella in self.umbrella.domain:
             for weather in self.weather.domain:
                 for season in self.season.domain:
                     for action in self.action.domain:
-                        if action == "shop":
-                            full_probability = 0.9 if weather == "sun" else 0.6
+                        if action == "open":
+                            open_probability = 0.9 if weather == "sun" else 0.6
+                        elif umbrella == "open":
+                            open_probability = 0.05 if weather == "sun" else 0.15
                         else:
-                            full_probability = 0.3 if pantry == "full" else 0.05
-                        pantry_rows.append(
+                            open_probability = 0.0
+                        umbrella_rows.append(
                             (
-                                {"pantry": pantry},
+                                {"umbrella": umbrella},
                                 {
                                     "weather": weather,
                                     "season": season,
@@ -331,10 +333,10 @@ class FactoredMDPTests(unittest.TestCase):
                                 },
                                 [
                                     (
-                                        {"pantry": "empty"},
-                                        1.0 - full_probability,
+                                        {"umbrella": "closed"},
+                                        1.0 - open_probability,
                                     ),
-                                    ({"pantry": "full"}, full_probability),
+                                    ({"umbrella": "open"}, open_probability),
                                 ],
                             )
                         )
@@ -346,15 +348,15 @@ class FactoredMDPTests(unittest.TestCase):
         )
         # ``weather`` is another factor's current variable; ``season`` is a
         # parent shared by both factors; ``action`` remains an external parent.
-        self.pantry_mdp = TabularMDP(
-            (self.pantry,),
+        self.umbrella_mdp = TabularMDP(
+            (self.umbrella,),
             parent_variables=(self.weather, self.season, self.action),
-            transitions=pantry_rows,
+            transitions=umbrella_rows,
         )
-        self.mdp = FactoredMDP((self.weather_mdp, self.pantry_mdp))
+        self.mdp = FactoredMDP((self.weather_mdp, self.umbrella_mdp))
 
     def test_factor_metadata_deduplicates_shared_and_internal_parents(self) -> None:
-        self.assertEqual(self.mdp.variables, (self.weather, self.pantry))
+        self.assertEqual(self.mdp.variables, (self.weather, self.umbrella))
         self.assertEqual(self.mdp.parent_variables, (self.season, self.action))
         self.assertEqual(self.mdp.parents, (self.season, self.action))
 
@@ -365,7 +367,7 @@ class FactoredMDPTests(unittest.TestCase):
         self.assertEqual(description["type"], "FactoredMDP")
         self.assertEqual(
             [variable["name"] for variable in description["variables"]],
-            ["weather", "pantry"],
+            ["weather", "umbrella"],
         )
         self.assertEqual(
             [variable["name"] for variable in description["parent_variables"]],
@@ -380,33 +382,63 @@ class FactoredMDPTests(unittest.TestCase):
         )
 
     def test_joint_probability_is_product_with_cross_factor_projection(self) -> None:
-        current = assignment(weather="sun", pantry="empty")
-        parents = assignment(season="dry", action="shop")
-        next_values = assignment(weather="rain", pantry="full")
+        current = assignment(weather="sun", umbrella="closed")
+        parents = assignment(season="dry", action="open")
+        next_values = assignment(weather="rain", umbrella="open")
 
-        # Weather contributes 0.2. Pantry sees *current* weather=sun through
+        # Weather contributes 0.2. Umbrella sees *current* weather=sun through
         # its parent projection and contributes 0.9.
         self.assertAlmostEqual(
             self.mdp.transition_probability(next_values, current, parents), 0.18
         )
 
-        rainy_current = assignment(weather="rain", pantry="empty")
-        # Changing current weather changes pantry's local term from .9 to .6.
+        rainy_current = assignment(weather="rain", umbrella="closed")
+        # Changing current weather changes umbrella's local term from .9 to .6.
         self.assertAlmostEqual(
             self.mdp.transition_probability(next_values, rainy_current, parents),
             0.12,
         )
 
+    def test_open_and_close_change_umbrella_without_controlling_weather(self) -> None:
+        current = assignment(weather="rain", umbrella="closed")
+        open_distribution = self.mdp.transition_distribution(
+            current,
+            assignment(season="dry", action="open"),
+        )
+        close_distribution = self.mdp.transition_distribution(
+            current,
+            assignment(season="dry", action="close"),
+        )
+
+        def marginal(
+            distribution: CategoricalDistribution,
+            variable: str,
+            value: object,
+        ) -> float:
+            return sum(
+                probability
+                for outcome, probability in distribution.items()
+                if outcome[variable] == value
+            )
+
+        self.assertAlmostEqual(marginal(open_distribution, "umbrella", "open"), 0.6)
+        self.assertAlmostEqual(marginal(close_distribution, "umbrella", "open"), 0.0)
+        for weather in self.weather.domain:
+            self.assertAlmostEqual(
+                marginal(open_distribution, "weather", weather),
+                marginal(close_distribution, "weather", weather),
+            )
+
     def test_joint_distribution_has_exact_support_and_is_normalized(self) -> None:
         distribution = self.mdp.transition_distribution(
-            assignment(weather="sun", pantry="empty"),
-            assignment(season="dry", action="shop"),
+            assignment(weather="sun", umbrella="closed"),
+            assignment(season="dry", action="open"),
         )
 
         expected_support = {
-            assignment(weather=weather, pantry=pantry)
+            assignment(weather=weather, umbrella=umbrella)
             for weather in self.weather.domain
-            for pantry in self.pantry.domain
+            for umbrella in self.umbrella.domain
         }
         self.assertEqual(
             {outcome for outcome, _ in distribution.items()}, expected_support
@@ -416,8 +448,8 @@ class FactoredMDPTests(unittest.TestCase):
         )
 
     def test_joint_sampling_is_seeded_and_returns_full_assignments(self) -> None:
-        current = assignment(weather="sun", pantry="empty")
-        parents = assignment(season="dry", action="shop")
+        current = assignment(weather="sun", umbrella="closed")
+        parents = assignment(season="dry", action="open")
         first_rng = random.Random(31)
         second_rng = random.Random(31)
 
@@ -426,10 +458,10 @@ class FactoredMDPTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         for outcome in first:
-            self.assertEqual(set(outcome), {"weather", "pantry"})
+            self.assertEqual(set(outcome), {"weather", "umbrella"})
 
     def test_factored_queries_enforce_exact_external_parent_keys(self) -> None:
-        current = assignment(weather="sun", pantry="empty")
+        current = assignment(weather="sun", umbrella="closed")
 
         with self.assertRaises(ValueError):
             self.mdp.transition_distribution(current, assignment(season="dry"))
@@ -438,7 +470,7 @@ class FactoredMDPTests(unittest.TestCase):
                 current,
                 assignment(
                     season="dry",
-                    action="shop",
+                    action="open",
                     weather="sun",
                 ),
             )

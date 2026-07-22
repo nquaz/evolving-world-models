@@ -43,12 +43,12 @@ updates are therefore synchronous.
   `TabularMDP`, and the product `FactoredMDP`.
 - `scripts/visualization.py` contains the optional NetworkX, Matplotlib, and
   Graphviz adapters used by the inherited visualization methods.
-- `notebooks/Factored_MDP_Demo.ipynb` builds a weather/pantry world, verifies
+- `notebooks/Factored_MDP_Demo.ipynb` builds a weather/umbrella world, verifies
   the factor product exactly, checks every transition context for
   normalization, and contrasts action-sensitive with action-invariant
   dynamics.
-- `docs/drawing.md` documents graph semantics, rendering backends, and the
-  visualization API.
+- [`docs/reference/visualization.md`](docs/reference/visualization.md) documents
+  graph semantics, rendering backends, and the visualization API.
 - `tests/test_mdp.py` tests the dependency-free transition core, while
   `tests/test_visualization.py` tests graph structure and rendering adapters.
 - `.github/workflows/quality.yml` independently checks supported Python
@@ -128,7 +128,8 @@ description = weather_model.to_dict()
 ```
 
 The representation is designed for inspection and logging, not as a stable
-serialization/deserialization format. See `docs/drawing.md` for the
+serialization/deserialization format. See
+[`docs/reference/visualization.md`](docs/reference/visualization.md) for the
 visualization layer built on the same structural metadata.
 
 ## Visualization
@@ -147,7 +148,8 @@ dot = weather_model.to_graphviz(rankdir="LR")
 The default factor view is a two-slice graph with explicit transition-factor
 nodes. The optional `view="dependencies"` removes factor nodes and shows all
 possible input-to-output dependencies implied by each factor scope. See
-`docs/drawing.md` for the exact node/edge schema and customization options.
+[`docs/reference/visualization.md`](docs/reference/visualization.md) for the
+exact node/edge schema and customization options.
 
 ## Development workflow
 

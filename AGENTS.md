@@ -47,7 +47,7 @@ Preserve these established boundaries unless the task explicitly changes them:
   constituent factor are external parents of the composite model.
 - Notebooks demonstrate and analyze library behavior; they are not the source
   of truth for reusable logic.
-- Preserve the weather/pantry example and its `wait`/`shop` actions unless the
+- Preserve the weather/umbrella example and its `open`/`close` actions unless the
   user explicitly requests a terminology change.
 
 Discover the repository root from the checkout rather than embedding an
