@@ -63,9 +63,11 @@ Prefer the inherited methods in application and notebook code.
 
 ## Runnable example
 
-This example creates two deterministic factors. `weather` is predicted by the
-first factor. The umbrella factor reads the current weather synchronously, while
-`season` and `action` remain external parents of the composite model.
+This example creates two deterministic factors. `lock` is predicted by the
+first factor. The door factor reads the current lock setting synchronously,
+while `action` remains the composite model's only external parent. Here `lock`
+describes the latch mechanism, so the Cartesian state space deliberately allows
+the latch to be locked while the door is open.
 
 ```python
 from itertools import product
@@ -110,14 +112,13 @@ def identity_factor(
     )
 
 
-weather = Variable("weather", ("sun", "rain"))
-umbrella = Variable("umbrella", ("closed", "open"))
-season = Variable("season", ("dry", "wet"))
+lock_state = Variable("lock", ("locked", "unlocked"))
+door_state = Variable("door", ("closed", "open"))
 action = Variable("action", ("open", "close"))
 
-weather_factor = identity_factor(weather, (season,))
-umbrella_factor = identity_factor(umbrella, (weather, season, action))
-world = FactoredMDP((weather_factor, umbrella_factor))
+lock_factor = identity_factor(lock_state)
+door_factor = identity_factor(door_state, (lock_state, action))
+world = FactoredMDP((lock_factor, door_factor))
 ```
 
 Inspect the graph as structured data:
@@ -131,12 +132,11 @@ assert graph.graph == {
     "semantics": "two_slice_transition_model",
 }
 assert graph.nodes[("factor", (1,))]["parents"] == (
-    "weather",
-    "season",
+    "lock",
     "action",
 )
 assert graph.edges[
-    ("current", "weather"),
+    ("current", "lock"),
     ("factor", (1,)),
 ]["kind"] == "internal_parent"
 
@@ -164,7 +164,7 @@ internal parents ──┘
 Each leaf factor represents its declared conditional kernel. For example,
 
 ```text
-P(umbrella′ | umbrella, weather, season, action)
+P(door′ | door, lock, action)
 ```
 
 The graph does not claim that every declared input has a nonzero effect in
@@ -188,8 +188,8 @@ assert not any(
     for _, attributes in dependencies.nodes(data=True)
 )
 assert dependencies.edges[
-    ("current", "weather"),
-    ("next", "umbrella"),
+    ("current", "lock"),
+    ("next", "door"),
 ]["input_kind"] == "internal_parent"
 ```
 
@@ -234,7 +234,7 @@ Every variable node has:
 | `variable` | Variable name |
 | `domain` | The declared domain tuple, or `None` |
 | `time` | `"t"` for inputs or `"t+1"` for outputs |
-| `label` | For example, `"weather (t+1)"` |
+| `label` | For example, `"lock (t+1)"` |
 
 Current and next nodes use the order of `model.variables`. External parents
 follow them in the order of `model.parent_variables`.
@@ -311,10 +311,10 @@ world.draw(
     node_size=3_500,
     font_size=8,
 )
-ax.set_title("Weather–umbrella transition structure")
+ax.set_title("Lock–door transition structure")
 fig.tight_layout()
 fig.savefig(
-    "weather-umbrella-transition-structure.png",
+    "lock-door-transition-structure.png",
     dpi=300,
     bbox_inches="tight",
 )
@@ -329,7 +329,7 @@ quantitative meaning.
 
 A suitable standalone caption is:
 
-> Declared two-slice factor structure for the deterministic weather–umbrella
+> Declared two-slice factor structure for the deterministic lock–door
 > example. Circles denote current and next variables, diamonds denote external
 > parents, squares denote transition factors, and dashed arrows denote external
 > conditioning inputs. The diagram is structural and deterministic; sample
@@ -374,8 +374,8 @@ Set `show_domains=True` to append each variable's finite domain using value
 representations:
 
 ```text
-weather (t)
-{'sun', 'rain'}
+lock (t)
+{'locked', 'unlocked'}
 ```
 
 Customize labels with a mapping keyed by a variable name or an exact node
@@ -384,9 +384,9 @@ identifier:
 ```python
 world.draw(
     labels={
-        "weather": "Weather",
-        ("next", "weather"): "Tomorrow's weather",
-        ("factor", (1,)): "Umbrella transition",
+        "lock": "Lock setting",
+        ("next", "lock"): "Next lock setting",
+        ("factor", (1,)): "Door transition",
     }
 )
 ```
@@ -396,7 +396,7 @@ Variable-name labels apply to each node for that variable unless overridden.
 Domain text is appended after resolving the custom label.
 
 NetworkX stores full factor labels. Matplotlib drawing compacts an unmodified
-factor label into a single-line form such as `P(weather′|·)` because arrows
+factor label into a single-line form such as `P(lock′|·)` because arrows
 already show the conditioning scope. When `node_size` is omitted, all factor
 squares use a common area large enough to contain the widest resolved factor
 label. Explicit factor-node label overrides remain verbatim, including blank,
@@ -477,7 +477,7 @@ Rendering is a separate, explicit operation:
 
 ```python
 output_path = dot.render(
-    "weather-umbrella-transition-structure",
+    "lock-door-transition-structure",
     format="svg",
     cleanup=True,
 )

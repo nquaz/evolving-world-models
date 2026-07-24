@@ -17,7 +17,7 @@ jobs:
   quality:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -43,6 +43,7 @@ jobs:
         run: |
           python -m pre_commit validate-config .pre-commit-config.yaml
           python -m json.tool notebooks/Factored_MDP_Demo.ipynb > /dev/null
+          python -m json.tool notebooks/Two_Clock_Allocation_Experiment.ipynb > /dev/null
 
       - name: Check formatting, linting, and types
         run: |
@@ -57,7 +58,9 @@ jobs:
           python -B -m unittest discover -s tests -v
           python -m compileall -q scripts tests
 
-      - name: Execute the demonstration notebook from a fresh kernel
+      - name: Execute both notebooks from fresh kernels
+        env:
+          MPLBACKEND: Agg
         run: |
           python -m jupyter nbconvert \
             --to notebook \
@@ -67,6 +70,15 @@ jobs:
             --ExecutePreprocessor.timeout=120 \
             notebooks/Factored_MDP_Demo.ipynb
           python -m json.tool /tmp/Factored_MDP_Demo.executed.ipynb > /dev/null
+          python -m jupyter nbconvert \
+            --to notebook \
+            --execute \
+            --output Two_Clock_Allocation_Experiment.executed.ipynb \
+            --output-dir /tmp \
+            --ExecutePreprocessor.timeout=1200 \
+            notebooks/Two_Clock_Allocation_Experiment.ipynb
+          python -m json.tool \
+            /tmp/Two_Clock_Allocation_Experiment.executed.ipynb > /dev/null
 
       - name: Build and validate the distribution
         run: |

@@ -61,12 +61,12 @@ def deterministic_kernel(
 class WrappedFactorLabelTests(unittest.TestCase):
     def test_wraps_kernel_labels_without_splitting_probability_prefix(self) -> None:
         self.assertEqual(
-            _wrapped_factor_label("P(weather′ | weather)"),
-            "P(weather′|·)",
+            _wrapped_factor_label("P(lock′ | lock)"),
+            "P(lock′|·)",
         )
         self.assertEqual(
-            _wrapped_factor_label("P(umbrella′ | umbrella, weather, action)"),
-            "P(umbrella′|·)",
+            _wrapped_factor_label("P(door′ | door, lock, action)"),
+            "P(door′|·)",
         )
 
     def test_non_kernel_labels_are_left_unchanged(self) -> None:
@@ -81,10 +81,10 @@ class WrappedFactorLabelTests(unittest.TestCase):
                 )
 
     def test_multiline_extent_accounts_for_every_line(self) -> None:
-        first = visualization._label_extent_points("Umbrella", 10.0)
+        first = visualization._label_extent_points("Door", 10.0)
         second = visualization._label_extent_points("transition", 10.0)
         combined = visualization._label_extent_points(
-            "Umbrella\ntransition",
+            "Door\ntransition",
             10.0,
         )
 
@@ -177,80 +177,68 @@ class WrappedFactorLabelTests(unittest.TestCase):
 
 class VisualizationFixture(unittest.TestCase):
     def setUp(self) -> None:
-        self.weather = Variable("weather", ("sun", "rain"))
-        self.umbrella = Variable("umbrella", ("closed", "open"))
-        self.season = Variable("season", ("dry", "wet"))
+        self.lock_state = Variable("lock", ("locked", "unlocked"))
+        self.door_state = Variable("door", ("closed", "open"))
         self.action = Variable("action", ("open", "close"))
 
-        self.weather_mdp = deterministic_kernel(
-            self.weather,
-            (self.season,),
+        self.lock_mdp = deterministic_kernel(
+            self.lock_state,
         )
-        self.umbrella_mdp = deterministic_kernel(
-            self.umbrella,
-            (self.weather, self.season, self.action),
+        self.door_mdp = deterministic_kernel(
+            self.door_state,
+            (self.lock_state, self.action),
         )
-        self.mdp = FactoredMDP((self.weather_mdp, self.umbrella_mdp))
+        self.mdp = FactoredMDP((self.lock_mdp, self.door_mdp))
 
 
 class NetworkXStructureTests(VisualizationFixture):
     def expected_variable_nodes(self):
         return {
-            ("current", "weather"): {
+            ("current", "lock"): {
                 "kind": "variable",
                 "role": "current",
                 "layer": 0,
                 "order": 0,
-                "variable": "weather",
-                "domain": ("sun", "rain"),
+                "variable": "lock",
+                "domain": ("locked", "unlocked"),
                 "time": "t",
-                "label": "weather (t)",
+                "label": "lock (t)",
             },
-            ("next", "weather"): {
+            ("next", "lock"): {
                 "kind": "variable",
                 "role": "next",
                 "layer": 2,
                 "order": 0,
-                "variable": "weather",
-                "domain": ("sun", "rain"),
+                "variable": "lock",
+                "domain": ("locked", "unlocked"),
                 "time": "t+1",
-                "label": "weather (t+1)",
+                "label": "lock (t+1)",
             },
-            ("current", "umbrella"): {
+            ("current", "door"): {
                 "kind": "variable",
                 "role": "current",
                 "layer": 0,
                 "order": 1,
-                "variable": "umbrella",
+                "variable": "door",
                 "domain": ("closed", "open"),
                 "time": "t",
-                "label": "umbrella (t)",
+                "label": "door (t)",
             },
-            ("next", "umbrella"): {
+            ("next", "door"): {
                 "kind": "variable",
                 "role": "next",
                 "layer": 2,
                 "order": 1,
-                "variable": "umbrella",
+                "variable": "door",
                 "domain": ("closed", "open"),
                 "time": "t+1",
-                "label": "umbrella (t+1)",
-            },
-            ("parent", "season"): {
-                "kind": "variable",
-                "role": "parent",
-                "layer": 0,
-                "order": 2,
-                "variable": "season",
-                "domain": ("dry", "wet"),
-                "time": "t",
-                "label": "season (t)",
+                "label": "door (t+1)",
             },
             ("parent", "action"): {
                 "kind": "variable",
                 "role": "parent",
                 "layer": 0,
-                "order": 3,
+                "order": 2,
                 "variable": "action",
                 "domain": ("open", "close"),
                 "time": "t",
@@ -272,9 +260,9 @@ class NetworkXStructureTests(VisualizationFixture):
                     "factor_index": (0,),
                     "factor_path": (0,),
                     "factor_type": "TabularMDP",
-                    "variables": ("weather",),
-                    "parents": ("season",),
-                    "label": "P(weather′ | weather, season)",
+                    "variables": ("lock",),
+                    "parents": (),
+                    "label": "P(lock′ | lock)",
                 },
                 ("factor", (1,)): {
                     "kind": "factor",
@@ -284,9 +272,9 @@ class NetworkXStructureTests(VisualizationFixture):
                     "factor_index": (1,),
                     "factor_path": (1,),
                     "factor_type": "TabularMDP",
-                    "variables": ("umbrella",),
-                    "parents": ("weather", "season", "action"),
-                    "label": "P(umbrella′ | umbrella, weather, season, action)",
+                    "variables": ("door",),
+                    "parents": ("lock", "action"),
+                    "label": "P(door′ | door, lock, action)",
                 },
             }
         )
@@ -315,26 +303,14 @@ class NetworkXStructureTests(VisualizationFixture):
             }
 
         expected_edges = {
-            (("current", "weather"), ("factor", (0,))): condition(
-                (0,), "current_state"
-            ),
-            (("parent", "season"), ("factor", (0,))): condition(
-                (0,), "external_parent"
-            ),
-            (("factor", (0,)), ("next", "weather")): predicts((0,)),
-            (("current", "umbrella"), ("factor", (1,))): condition(
-                (1,), "current_state"
-            ),
-            (("current", "weather"), ("factor", (1,))): condition(
-                (1,), "internal_parent"
-            ),
-            (("parent", "season"), ("factor", (1,))): condition(
-                (1,), "external_parent"
-            ),
+            (("current", "lock"), ("factor", (0,))): condition((0,), "current_state"),
+            (("factor", (0,)), ("next", "lock")): predicts((0,)),
+            (("current", "door"), ("factor", (1,))): condition((1,), "current_state"),
+            (("current", "lock"), ("factor", (1,))): condition((1,), "internal_parent"),
             (("parent", "action"), ("factor", (1,))): condition(
                 (1,), "external_parent"
             ),
-            (("factor", (1,)), ("next", "umbrella")): predicts((1,)),
+            (("factor", (1,)), ("next", "door")): predicts((1,)),
         }
         actual_edges = {
             (source, target): attributes
@@ -342,15 +318,15 @@ class NetworkXStructureTests(VisualizationFixture):
         }
         self.assertEqual(actual_edges, expected_edges)
 
-        # Cross-factor weather is read synchronously from x_t. It must not be
-        # represented as an external parent or as next-time weather.
-        self.assertNotIn(("parent", "weather"), graph)
+        # The cross-factor lock setting is read synchronously from x_t. It must
+        # not be represented as an external parent or as the next-time lock.
+        self.assertNotIn(("parent", "lock"), graph)
         self.assertIn(
-            (("current", "weather"), ("factor", (1,))),
+            (("current", "lock"), ("factor", (1,))),
             graph.edges,
         )
         self.assertNotIn(
-            (("next", "weather"), ("factor", (1,))),
+            (("next", "lock"), ("factor", (1,))),
             graph.edges,
         )
 
@@ -369,22 +345,12 @@ class NetworkXStructureTests(VisualizationFixture):
             }
 
         expected_edges = {
-            (("current", "weather"), ("next", "weather")): dependency(
-                (0,), "current_state"
-            ),
-            (("parent", "season"), ("next", "weather")): dependency(
-                (0,), "external_parent"
-            ),
-            (("current", "umbrella"), ("next", "umbrella")): dependency(
-                (1,), "current_state"
-            ),
-            (("current", "weather"), ("next", "umbrella")): dependency(
+            (("current", "lock"), ("next", "lock")): dependency((0,), "current_state"),
+            (("current", "door"), ("next", "door")): dependency((1,), "current_state"),
+            (("current", "lock"), ("next", "door")): dependency(
                 (1,), "internal_parent"
             ),
-            (("parent", "season"), ("next", "umbrella")): dependency(
-                (1,), "external_parent"
-            ),
-            (("parent", "action"), ("next", "umbrella")): dependency(
+            (("parent", "action"), ("next", "door")): dependency(
                 (1,), "external_parent"
             ),
         }
@@ -423,11 +389,11 @@ class NetworkXStructureTests(VisualizationFixture):
         self.assertEqual(set(factor_nodes), {("factor", (0, 0)), ("factor", (0, 1))})
         self.assertEqual(
             factor_nodes[("factor", (0, 0))]["variables"],
-            ("weather",),
+            ("lock",),
         )
         self.assertEqual(
             factor_nodes[("factor", (0, 1))]["variables"],
-            ("umbrella",),
+            ("door",),
         )
         self.assertEqual(
             factor_nodes[("factor", (0, 0))]["factor_type"],
@@ -435,7 +401,7 @@ class NetworkXStructureTests(VisualizationFixture):
         )
         self.assertNotIn(("factor", (0,)), graph)
         self.assertIn(
-            (("current", "weather"), ("factor", (0, 1))),
+            (("current", "lock"), ("factor", (0, 1))),
             graph.edges,
         )
 
@@ -460,16 +426,22 @@ class DrawingTests(VisualizationFixture):
                 ax=axes,
                 show_domains=True,
                 labels={
-                    "weather": "Weather",
-                    ("next", "weather"): "Tomorrow's weather",
+                    "lock": "Lock setting",
+                    ("next", "lock"): "Next lock setting",
                 },
             )
             rendered_labels = {text.get_text() for text in axes.texts}
 
-            self.assertIn("Weather\n{'sun', 'rain'}", rendered_labels)
-            self.assertIn("Tomorrow's weather\n{'sun', 'rain'}", rendered_labels)
-            self.assertIn("umbrella (t)\n{'closed', 'open'}", rendered_labels)
-            self.assertIn("P(weather′|·)", rendered_labels)
+            self.assertIn(
+                "Lock setting\n{'locked', 'unlocked'}",
+                rendered_labels,
+            )
+            self.assertIn(
+                "Next lock setting\n{'locked', 'unlocked'}",
+                rendered_labels,
+            )
+            self.assertIn("door (t)\n{'closed', 'open'}", rendered_labels)
+            self.assertIn("P(lock′|·)", rendered_labels)
         finally:
             plt.close(figure)
 
@@ -477,12 +449,13 @@ class DrawingTests(VisualizationFixture):
         graph = self.mdp.to_networkx()
         positions = visualization._layered_layout(graph)
 
-        self.assertEqual(positions[("current", "weather")], (0.0, 1.5))
-        self.assertEqual(positions[("parent", "action")], (0.0, -1.5))
-        self.assertEqual(positions[("factor", (0,))], (1.0, 1.5))
-        self.assertEqual(positions[("factor", (1,))], (1.0, -1.5))
-        self.assertEqual(positions[("next", "weather")], (2.0, 1.5))
-        self.assertEqual(positions[("next", "umbrella")], (2.0, -1.5))
+        self.assertEqual(positions[("current", "lock")], (0.0, 1.0))
+        self.assertEqual(positions[("current", "door")], (0.0, 0.0))
+        self.assertEqual(positions[("parent", "action")], (0.0, -1.0))
+        self.assertEqual(positions[("factor", (0,))], (1.0, 1.0))
+        self.assertEqual(positions[("factor", (1,))], (1.0, -1.0))
+        self.assertEqual(positions[("next", "lock")], (2.0, 1.0))
+        self.assertEqual(positions[("next", "door")], (2.0, -1.0))
 
     def test_default_factor_markers_do_not_overlap_at_render_size(self) -> None:
         figure, axes = plt.subplots(figsize=(6.4, 4.8), dpi=100)
@@ -538,7 +511,7 @@ class DrawingTests(VisualizationFixture):
     ) -> None:
         factor_node = ("factor", (1,))
 
-        for label in ("", "   ", "Umbrella\ntransition"):
+        for label in ("", "   ", "Door\ntransition"):
             with self.subTest(label=label):
                 figure, axes = plt.subplots()
                 try:
@@ -602,7 +575,7 @@ class DrawingTests(VisualizationFixture):
             )
 
             factor_labels, font_size, base_size = compute_size.call_args.args
-            self.assertEqual(factor_labels[("factor", (1,))], "P(umbrella′|·)")
+            self.assertEqual(factor_labels[("factor", (1,))], "P(door′|·)")
             self.assertEqual(font_size, 9.0)
             self.assertEqual(base_size, 2300.0)
 
@@ -776,8 +749,8 @@ class GraphvizTests(VisualizationFixture):
         dot = self.mdp.to_graphviz(rankdir="lr")
         source = dot.source
         self.assertIn("rankdir=LR", source)
-        self.assertIn("P(weather′ | weather, season)", source)
-        self.assertIn("P(umbrella′ | umbrella, weather, season, action)", source)
+        self.assertIn("P(lock′ | lock)", source)
+        self.assertIn("P(door′ | door, lock, action)", source)
         self.assertIn('fillcolor="#D9D9D9"', source)
         self.assertIn("rank=same", source)
 

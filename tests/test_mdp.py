@@ -8,6 +8,7 @@ import math
 import random
 import unittest
 from abc import ABC
+from itertools import product
 
 from scripts.mdp import (
     AbstractMDP,
@@ -24,6 +25,37 @@ def assignment(**values: object) -> Assignment:
     """Keep the fixtures concise while exercising the mapping constructor."""
 
     return Assignment(values)
+
+
+def deterministic_kernel(
+    variable: Variable,
+    parents: tuple[Variable, ...] = (),
+) -> TabularMDP:
+    """Build a complete deterministic factor for composition validation tests."""
+
+    if variable.domain is None:
+        raise ValueError("The test variable must have a finite domain.")
+    parent_domains = []
+    for parent in parents:
+        if parent.domain is None:
+            raise ValueError("Every test parent must have a finite domain.")
+        parent_domains.append(parent.domain)
+
+    rows = []
+    for values in product(variable.domain, *parent_domains):
+        current_value, *parent_values = values
+        rows.append(
+            (
+                {variable.name: current_value},
+                {parent.name: value for parent, value in zip(parents, parent_values)},
+                (({variable.name: current_value}, 1.0),),
+            )
+        )
+    return TabularMDP(
+        (variable,),
+        parent_variables=parents,
+        transitions=rows,
+    )
 
 
 class PrimitiveTests(unittest.TestCase):
@@ -292,73 +324,108 @@ class TabularMDPTests(unittest.TestCase):
 
 class FactoredMDPTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.weather = Variable("weather", ("sun", "rain"))
-        self.umbrella = Variable("umbrella", ("closed", "open"))
-        self.season = Variable("season", ("dry", "wet"))
+        self.lock_state = Variable("lock", ("locked", "unlocked"))
+        self.door_state = Variable("door", ("closed", "open"))
         self.action = Variable("action", ("open", "close"))
 
-        weather_rows = []
-        for weather in self.weather.domain:
-            for season in self.season.domain:
-                rain_probability = 0.2 if season == "dry" else 0.7
-                weather_rows.append(
+        lock_rows = (
+            (
+                {"lock": "locked"},
+                {},
+                (({"lock": "locked"}, 0.95), ({"lock": "unlocked"}, 0.05)),
+            ),
+            (
+                {"lock": "unlocked"},
+                {},
+                (({"lock": "locked"}, 0.05), ({"lock": "unlocked"}, 0.95)),
+            ),
+        )
+
+        door_open_probability = {
+            ("closed", "locked", "open"): 0.0,
+            ("closed", "unlocked", "open"): 0.9,
+            ("open", "locked", "open"): 1.0,
+            ("open", "unlocked", "open"): 1.0,
+            ("closed", "locked", "close"): 0.0,
+            ("closed", "unlocked", "close"): 0.0,
+            ("open", "locked", "close"): 0.1,
+            ("open", "unlocked", "close"): 0.1,
+        }
+        door_rows = []
+        for current_door, current_lock, requested_action in product(
+            self.door_state.domain,
+            self.lock_state.domain,
+            self.action.domain,
+        ):
+            open_probability = door_open_probability[
+                current_door,
+                current_lock,
+                requested_action,
+            ]
+            door_rows.append(
+                (
+                    {"door": current_door},
+                    {"lock": current_lock, "action": requested_action},
                     (
-                        {"weather": weather},
-                        {"season": season},
-                        [
-                            ({"weather": "sun"}, 1.0 - rain_probability),
-                            ({"weather": "rain"}, rain_probability),
-                        ],
-                    )
+                        ({"door": "closed"}, 1.0 - open_probability),
+                        ({"door": "open"}, open_probability),
+                    ),
+                )
+            )
+
+        self.lock_mdp = TabularMDP(
+            (self.lock_state,),
+            transitions=lock_rows,
+        )
+        # ``lock`` is another factor's current variable. ``action`` is not
+        # predicted by any factor, so it is the composite's sole external parent.
+        self.door_mdp = TabularMDP(
+            (self.door_state,),
+            parent_variables=(self.lock_state, self.action),
+            transitions=door_rows,
+        )
+        self.mdp = FactoredMDP((self.lock_mdp, self.door_mdp))
+
+    def test_factor_metadata_keeps_only_action_external(self) -> None:
+        self.assertEqual(self.mdp.variables, (self.lock_state, self.door_state))
+        self.assertEqual(self.mdp.parent_variables, (self.action,))
+        self.assertEqual(self.mdp.parents, (self.action,))
+
+    def test_local_factors_match_lock_and_door_contract(self) -> None:
+        for current_lock in self.lock_state.domain:
+            with self.subTest(current_lock=current_lock):
+                self.assertAlmostEqual(
+                    self.lock_mdp.transition_probability(
+                        {"lock": current_lock},
+                        {"lock": current_lock},
+                    ),
+                    0.95,
                 )
 
-        umbrella_rows = []
-        for umbrella in self.umbrella.domain:
-            for weather in self.weather.domain:
-                for season in self.season.domain:
-                    for action in self.action.domain:
-                        if action == "open":
-                            open_probability = 0.9 if weather == "sun" else 0.6
-                        elif umbrella == "open":
-                            open_probability = 0.05 if weather == "sun" else 0.15
-                        else:
-                            open_probability = 0.0
-                        umbrella_rows.append(
-                            (
-                                {"umbrella": umbrella},
-                                {
-                                    "weather": weather,
-                                    "season": season,
-                                    "action": action,
-                                },
-                                [
-                                    (
-                                        {"umbrella": "closed"},
-                                        1.0 - open_probability,
-                                    ),
-                                    ({"umbrella": "open"}, open_probability),
-                                ],
-                            )
-                        )
-
-        self.weather_mdp = TabularMDP(
-            (self.weather,),
-            parent_variables=(self.season,),
-            transitions=weather_rows,
+        cases = (
+            ("closed", "locked", "open", 0.0),
+            ("closed", "unlocked", "open", 0.9),
+            ("open", "locked", "open", 1.0),
+            ("open", "unlocked", "open", 1.0),
+            ("closed", "locked", "close", 0.0),
+            ("closed", "unlocked", "close", 0.0),
+            ("open", "locked", "close", 0.1),
+            ("open", "unlocked", "close", 0.1),
         )
-        # ``weather`` is another factor's current variable; ``season`` is a
-        # parent shared by both factors; ``action`` remains an external parent.
-        self.umbrella_mdp = TabularMDP(
-            (self.umbrella,),
-            parent_variables=(self.weather, self.season, self.action),
-            transitions=umbrella_rows,
-        )
-        self.mdp = FactoredMDP((self.weather_mdp, self.umbrella_mdp))
-
-    def test_factor_metadata_deduplicates_shared_and_internal_parents(self) -> None:
-        self.assertEqual(self.mdp.variables, (self.weather, self.umbrella))
-        self.assertEqual(self.mdp.parent_variables, (self.season, self.action))
-        self.assertEqual(self.mdp.parents, (self.season, self.action))
+        for current_door, current_lock, requested_action, expected in cases:
+            with self.subTest(
+                current_door=current_door,
+                current_lock=current_lock,
+                requested_action=requested_action,
+            ):
+                self.assertAlmostEqual(
+                    self.door_mdp.transition_probability(
+                        {"door": "open"},
+                        {"door": current_door},
+                        {"lock": current_lock, "action": requested_action},
+                    ),
+                    expected,
+                )
 
     def test_string_recursively_describes_factors(self) -> None:
         self.assertNotIn("__str__", FactoredMDP.__dict__)
@@ -367,11 +434,11 @@ class FactoredMDPTests(unittest.TestCase):
         self.assertEqual(description["type"], "FactoredMDP")
         self.assertEqual(
             [variable["name"] for variable in description["variables"]],
-            ["weather", "umbrella"],
+            ["lock", "door"],
         )
         self.assertEqual(
             [variable["name"] for variable in description["parent_variables"]],
-            ["season", "action"],
+            ["action"],
         )
         self.assertEqual(
             [factor["type"] for factor in description["factors"]],
@@ -382,32 +449,26 @@ class FactoredMDPTests(unittest.TestCase):
         )
 
     def test_joint_probability_is_product_with_cross_factor_projection(self) -> None:
-        current = assignment(weather="sun", umbrella="closed")
-        parents = assignment(season="dry", action="open")
-        next_values = assignment(weather="rain", umbrella="open")
+        current = assignment(lock="unlocked", door="closed")
+        parents = assignment(action="open")
+        next_values = assignment(lock="locked", door="open")
 
-        # Weather contributes 0.2. Umbrella sees *current* weather=sun through
-        # its parent projection and contributes 0.9.
+        # The lock contributes 0.05. The door must condition on the *current*
+        # unlocked latch and contribute 0.9, even though the next lock is locked.
         self.assertAlmostEqual(
-            self.mdp.transition_probability(next_values, current, parents), 0.18
+            self.mdp.transition_probability(next_values, current, parents),
+            0.045,
         )
 
-        rainy_current = assignment(weather="rain", umbrella="closed")
-        # Changing current weather changes umbrella's local term from .9 to .6.
-        self.assertAlmostEqual(
-            self.mdp.transition_probability(next_values, rainy_current, parents),
-            0.12,
-        )
-
-    def test_open_and_close_change_umbrella_without_controlling_weather(self) -> None:
-        current = assignment(weather="rain", umbrella="closed")
+    def test_open_and_close_change_door_without_controlling_lock(self) -> None:
+        current = assignment(lock="unlocked", door="closed")
         open_distribution = self.mdp.transition_distribution(
             current,
-            assignment(season="dry", action="open"),
+            assignment(action="open"),
         )
         close_distribution = self.mdp.transition_distribution(
             current,
-            assignment(season="dry", action="close"),
+            assignment(action="close"),
         )
 
         def marginal(
@@ -421,35 +482,35 @@ class FactoredMDPTests(unittest.TestCase):
                 if outcome[variable] == value
             )
 
-        self.assertAlmostEqual(marginal(open_distribution, "umbrella", "open"), 0.6)
-        self.assertAlmostEqual(marginal(close_distribution, "umbrella", "open"), 0.0)
-        for weather in self.weather.domain:
+        self.assertAlmostEqual(marginal(open_distribution, "door", "open"), 0.9)
+        self.assertAlmostEqual(marginal(close_distribution, "door", "open"), 0.0)
+        for lock_value in self.lock_state.domain:
             self.assertAlmostEqual(
-                marginal(open_distribution, "weather", weather),
-                marginal(close_distribution, "weather", weather),
+                marginal(open_distribution, "lock", lock_value),
+                marginal(close_distribution, "lock", lock_value),
             )
 
     def test_joint_distribution_has_exact_support_and_is_normalized(self) -> None:
         distribution = self.mdp.transition_distribution(
-            assignment(weather="sun", umbrella="closed"),
-            assignment(season="dry", action="open"),
+            assignment(lock="unlocked", door="closed"),
+            assignment(action="open"),
         )
 
         expected_support = {
-            assignment(weather=weather, umbrella=umbrella)
-            for weather in self.weather.domain
-            for umbrella in self.umbrella.domain
+            assignment(lock=lock_value, door=door_value)
+            for lock_value in self.lock_state.domain
+            for door_value in self.door_state.domain
         }
-        self.assertEqual(
-            {outcome for outcome, _ in distribution.items()}, expected_support
-        )
+        actual_support = {outcome for outcome, _ in distribution.items()}
+        self.assertEqual(actual_support, expected_support)
+        self.assertIn(assignment(lock="locked", door="open"), actual_support)
         self.assertAlmostEqual(
             sum(probability for _, probability in distribution.items()), 1.0
         )
 
     def test_joint_sampling_is_seeded_and_returns_full_assignments(self) -> None:
-        current = assignment(weather="sun", umbrella="closed")
-        parents = assignment(season="dry", action="open")
+        current = assignment(lock="unlocked", door="closed")
+        parents = assignment(action="open")
         first_rng = random.Random(31)
         second_rng = random.Random(31)
 
@@ -458,45 +519,47 @@ class FactoredMDPTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         for outcome in first:
-            self.assertEqual(set(outcome), {"weather", "umbrella"})
+            self.assertEqual(set(outcome), {"lock", "door"})
 
     def test_factored_queries_enforce_exact_external_parent_keys(self) -> None:
-        current = assignment(weather="sun", umbrella="closed")
+        current = assignment(lock="unlocked", door="closed")
 
         with self.assertRaises(ValueError):
-            self.mdp.transition_distribution(current, assignment(season="dry"))
+            self.mdp.transition_distribution(current)
         with self.assertRaises(ValueError):
             self.mdp.transition_distribution(
                 current,
                 assignment(
-                    season="dry",
                     action="open",
-                    weather="sun",
+                    lock="unlocked",
                 ),
             )
 
     def test_overlapping_factor_outputs_are_rejected(self) -> None:
         with self.assertRaises(ValueError):
-            FactoredMDP((self.weather_mdp, self.weather_mdp))
+            FactoredMDP((self.lock_mdp, self.lock_mdp))
+
+    def test_shared_external_parent_is_deduplicated(self) -> None:
+        left_state = Variable("left", (0, 1))
+        right_state = Variable("right", (0, 1))
+        shared_context = Variable("context", ("low", "high"))
+        left_mdp = deterministic_kernel(left_state, (shared_context,))
+        right_mdp = deterministic_kernel(right_state, (shared_context,))
+
+        factored = FactoredMDP((left_mdp, right_mdp))
+
+        self.assertEqual(factored.parent_variables, (shared_context,))
 
     def test_conflicting_shared_parent_domains_are_rejected(self) -> None:
-        state = Variable("other", (0, 1))
-        incompatible_season = Variable("season", ("spring", "fall"))
-        rows = [
-            (
-                {"other": current},
-                {"season": season},
-                [({"other": 0}, 0.5), ({"other": 1}, 0.5)],
-            )
-            for current in state.domain
-            for season in incompatible_season.domain
-        ]
-        conflicting = TabularMDP(
-            (state,), parent_variables=(incompatible_season,), transitions=rows
-        )
+        left_state = Variable("left", (0, 1))
+        right_state = Variable("right", (0, 1))
+        left_context = Variable("context", ("low", "high"))
+        right_context = Variable("context", ("cold", "hot"))
+        left_mdp = deterministic_kernel(left_state, (left_context,))
+        right_mdp = deterministic_kernel(right_state, (right_context,))
 
         with self.assertRaises(ValueError):
-            FactoredMDP((self.weather_mdp, conflicting))
+            FactoredMDP((left_mdp, right_mdp))
 
 
 if __name__ == "__main__":

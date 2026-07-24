@@ -20,6 +20,9 @@ dist/
 /env/
 /.conda/
 
+# Local experiment runs and generated empirical artifacts
+/results/
+
 # Local secrets and developer configuration
 .env
 .env.*

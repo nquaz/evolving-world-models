@@ -57,3 +57,14 @@ strict = true
 pretty = true
 show_error_codes = true
 warn_unreachable = true
+follow_imports_for_stubs = true
+
+[[tool.mypy.overrides]]
+module = ["matplotlib", "matplotlib.*", "numpy", "numpy.*"]
+# NumPy 2.4's installed stubs use Python 3.12 type-alias syntax, and current
+# Matplotlib sources use structural pattern matching, even when consumers
+# deliberately type-check a Python 3.9-compatible project. Treat both optional
+# third-party libraries as typed boundaries, and permit the isolated pre-commit
+# environment to omit them, while keeping strict checks on repository code.
+follow_imports = "skip"
+ignore_missing_imports = true

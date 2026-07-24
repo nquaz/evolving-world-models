@@ -37,18 +37,23 @@ Preserve these established boundaries unless the task explicitly changes them:
 - `scripts/mdp.py` owns transition semantics. Rewards, beliefs, learning
   algorithms, objectives, task distributions, orchestration, and evaluation
   belong in separate cohesive modules.
+- `scripts/beliefs.py` owns mutable conjugate posterior state. Belief updates
+  are explicit, and factored updates project internal parents from the current
+  joint state. Selective updates and finite learning-budget allocation belong
+  in a later learning or orchestration layer.
 - The transition-model core remains standard-library-only.
-- Visualization and notebook dependencies remain optional. The core must import
-  without them; visualization adapters import optional libraries only when the
-  corresponding feature is called.
+- Visualization and notebook dependencies remain optional. The core and
+  package root must import without them. Explicit optional presentation
+  submodules MAY import their declared dependencies normally, but MUST NOT be
+  re-exported in a way that makes a core import require those dependencies.
 - Factored transitions are synchronous. A cross-factor parent is read from the
   current joint state, never from another factor's sampled next state.
 - Factor output scopes are disjoint. Only parents not predicted by any
   constituent factor are external parents of the composite model.
 - Notebooks demonstrate and analyze library behavior; they are not the source
   of truth for reusable logic.
-- Preserve the weather/umbrella example and its `open`/`close` actions unless the
-  user explicitly requests a terminology change.
+- Preserve the lock/door example and its `open`/`close` actions unless the user
+  explicitly requests a terminology change.
 
 Discover the repository root from the checkout rather than embedding an
 absolute path in code or artifacts. In the current managed workspace, the
@@ -85,10 +90,16 @@ While working:
 - Make external writes, network calls, expensive jobs, and destructive actions
   explicit. They must never be hidden in imports or constructors.
 
-For a broad architectural change, write a short design note before
-implementation covering the problem, constraints, proposed interfaces,
-alternatives, migration, and validation plan. Keep the note with the relevant
-log or documentation.
+For a major new conceptual component of the research or experiment design—such
+as factored-transition semantics, Bayesian posteriors over MDPs, or a new
+planning or objective formalism—create or update one durable conceptual note in
+`docs/reference/` before implementation. Cover the problem, scientific
+contract, constraints, interfaces, alternatives, and validation plan. Routine
+code organization, individual scripts, plotting helpers, and
+experiment-specific variations do not warrant standalone design pages; record
+their contracts in module docstrings, user-facing workflows in the README, and
+implementation decisions and replication details in the current research log.
+Do not create separate `docs/design/` or `docs/scripts/` hierarchies.
 
 ## Version control and commit discipline
 
@@ -140,7 +151,8 @@ log or documentation.
   ```
 
 - Verify that no unrelated file, credential, cache, local environment, raw
-  dataset, checkpoint, or unexpectedly large binary is staged.
+  dataset, experiment run artifact, checkpoint, or unexpectedly large binary
+  is staged. Nothing under `results/` belongs in a commit.
 - Follow an established commit-message convention when one exists. Otherwise,
   use an imperative summary of roughly 50--72 characters. Add a body when it
   helps explain motivation, scientific or compatibility implications,
@@ -342,19 +354,17 @@ genuinely self-evident accessor. Document private helpers when their algorithm,
 assumptions, or invariants are not obvious. Comments should explain *why* a
 choice is necessary, not narrate the syntax.
 
-When adding or materially changing a nontrivial executable, experiment driver,
-data pipeline, or plotting program, create or update
-`docs/scripts/<module-name>.md`. It MUST document:
-
-1. Purpose and placement in the workflow.
-2. Public API or CLI contract.
-3. Input/output schemas, units, and example files.
-4. Configuration precedence and defaults.
-5. Algorithm or data flow, with equations when useful.
-6. Validation, errors, overwrite/resume semantics, and recovery.
-7. Determinism, seeds, expected runtime, and resource needs.
-8. Complete invocations and expected artifacts.
-9. Test coverage and known limitations.
+Document each new or materially changed nontrivial executable, experiment
+driver, data pipeline, or plotting program in its module docstring and public
+API docstrings, not in a separate per-script page. Collectively, those
+docstrings MUST cover, as applicable: purpose and workflow placement; public
+API or CLI contract; input/output schemas and units; configuration and
+defaults; algorithm or data flow; validation, errors, overwrite/resume
+behavior, and recovery; determinism, seeds, runtime, and resources; invocations
+and expected artifacts; and test coverage and limitations. Put canonical
+user-facing setup and invocations in the README, and put run-specific commands,
+configuration, artifacts, results, and failures in the required research log.
+Cross-link instead of duplicating facts.
 
 Executable modules SHOULD expose `main(argv=None) -> int` and invoke it with
 `raise SystemExit(main())` under the main guard. They should provide validated
@@ -362,18 +372,23 @@ Executable modules SHOULD expose `main(argv=None) -> int` and invoke it with
 and perform no work at import time. Prefer machine-readable outputs for
 downstream automation.
 
-### User-facing and architectural documentation
+### Documentation placement
 
+- Reserve `docs/reference/` for stable explanations of major conceptual
+  components used across experiments. Organize pages by concept rather than by
+  date, script, or implementation task. Extend an existing reference when the
+  concept already has a canonical page.
+- Do not create a reference page for a routine module, helper, plot, one-off
+  experiment variation, or transient implementation decision.
 - Update the README when installation, layout, public APIs, examples, or
   canonical workflows change.
-- Update domain-specific documentation when semantics, schemas, graph meanings,
-  artifact formats, or extension points change.
+- Record transient rationale, rejected alternatives, experiment-specific
+  methods, exact replication details, and results in the current `docs/logs/`
+  mini-paper unless they are essential to a durable conceptual contract.
 - Include small runnable examples. Verify examples rather than treating them as
   illustrative pseudocode unless clearly labeled.
 - Cite the source of externally derived algorithms, equations, datasets, or
   evaluation protocols.
-- Record important design decisions and rejected alternatives when the reason
-  would otherwise be lost.
 
 ## Testing and verification
 
@@ -410,6 +425,7 @@ python -m mypy scripts
 python -m unittest discover -s tests -v
 python -m compileall -q scripts tests
 python -m json.tool notebooks/Factored_MDP_Demo.ipynb > /dev/null
+python -m json.tool notebooks/Two_Clock_Allocation_Experiment.ipynb > /dev/null
 ```
 
 The JSON command checks notebook structure only; it does not execute cells. Any
@@ -454,6 +470,10 @@ imports and focused core tests in an environment without optional extras.
   research log rather than relying on notebook metadata to encode it.
 - Do not commit credentials, private data, huge embedded binaries, debug noise,
   or machine-specific metadata.
+- Small, intentional notebook outputs MAY remain committed for exposition,
+  including concise tables and explanatory figures. They are demonstrations,
+  not canonical measurements or substitutes for machine-readable run
+  artifacts.
 - Treat notebook findings as demonstrations unless a reproducible run and
   research log support the claim.
 
@@ -484,14 +504,23 @@ Every substantive experiment, benchmark, or scientific claim MUST record:
 - known nondeterminism and whether exact reproduction or statistical replication
   is expected.
 
-Use repository-relative paths in documentation. Never depend on secrets, hidden
-notebook state, or undocumented local state. Runs MUST use unique output
-locations and MUST NOT silently overwrite earlier raw results. Preserve raw
-per-run measurements before aggregation, and generate tables and figures from
-saved measurements rather than manual transcription.
-If a material artifact is too large to commit, record a durable storage URI,
-retrieval instructions, checksum, access requirements, and retention policy;
-an ephemeral local path is not sufficient provenance.
+Use repository-relative paths for repository files and explicit URIs for
+external artifacts. Never depend on secrets, hidden notebook state, or
+undocumented local state. Runs MUST use unique output locations and MUST NOT
+silently overwrite earlier raw results. Preserve raw per-run measurements
+before aggregation, and generate tables and figures from saved measurements
+rather than manual transcription.
+
+Experiment run artifacts MUST NOT be committed, regardless of size. This
+includes generated configurations, raw and aggregate measurements, seed
+ledgers, manifests, checkpoints, and standalone empirical figures. Store local
+runs under the repository-root, Git-ignored `results/` directory or outside the
+checkout. Preserve accepted runs locally during active analysis. Before
+treating a run as durable evidence, copy the complete verified run to durable
+external storage and record its URI, manifest or checksums, retrieval and
+access requirements, and retention policy in the research log. A local path
+alone is ephemeral provenance. Logs MAY commit compact human-readable
+statistics and conclusions, but they are not canonical data.
 
 ### Experimental design and statistical reporting
 
@@ -531,14 +560,10 @@ or plot ranges.
 
 ### Required mini-paper logs
 
-Create or update one log under `docs/logs/` for every substantive implementation
+Create or update one log under `docs/logs/` containing that day's substantive implementation
 milestone, experiment, benchmark, or interpretation used to support a decision.
-Use `YYYY-MM-DD-short-descriptive-slug.md`; use distinct slugs for unrelated work
-on the same date. A coherent multi-step effort may share one evolving log.
-
+Use `YYYY-MM-DD-short-descriptive-slug.md`; a coherent multi-step effort may share one evolving log.
 Logs are durable records. Include null, negative, incomplete, and failed work.
-After a result has been shared or relied upon, correct it with a clearly dated
-addendum instead of silently rewriting the historical conclusion.
 
 Every log MUST contain the following sections. Retain a non-applicable section
 and explain briefly why it does not apply.
@@ -633,6 +658,9 @@ Do not manually alter plotted values or use image editing as part of the
 analysis pipeline. Preserve plotted measurements or the generating
 specification, record the exact generation command, and record the code revision
 when available—or explicitly state that revision metadata was unavailable.
+Empirical measurements used as durable evidence MUST be archived externally
+under the experiment-result policy above; a committed notebook rendering does
+not satisfy that requirement.
 
 Every coordinate-based quantitative plot MUST have:
 
@@ -713,11 +741,15 @@ preserve a machine-readable version of the table.
   exclusions, and split construction.
 - Never overwrite raw data or canonical results in place. Use explicit,
   run-specific derived-output locations.
+- Keep repository-local experiment runs under the ignored `results/` tree.
+  Never stage or commit them. Document how to recreate them and, for durable
+  evidence, where the complete verified run is archived externally.
 - Before adding local virtual/Conda environment directories, downloads,
-  datasets, checkpoints, or generated outputs, add narrow ignore rules and
-  document how each artifact is recreated.
-- Do not commit caches, temporary files, large outputs, or embedded binaries
-  unless they are intentional, justified, and documented.
+  datasets, checkpoints, or other generated outputs, add narrow ignore rules
+  and document how each artifact is recreated.
+- Do not commit caches, temporary files, checkpoints, standalone generated
+  outputs, or large binaries. The only output exception is the small,
+  intentional notebook exposition allowed above.
 
 ## Definition of done
 
@@ -730,14 +762,17 @@ Before declaring work complete, verify all applicable items:
   is reported with its reason.
 - Numerical behavior, determinism, error cases, and resource cleanup are tested
   as applicable to the change.
-- Public APIs, script pages, README, examples, and dependency declarations match
-  the implementation.
+- Public APIs, module docstrings, applicable conceptual references, README,
+  examples, and dependency declarations match the implementation.
 - A substantive effort has a complete mini-paper log with exact replication
   instructions, artifacts, results, limitations, and next directions.
 - Affected or relied-upon notebooks run from fresh state and contain no hidden
   or stale execution state.
 - New, changed, or reported figures and tables pass the publication-quality
   checklist and link to source data or their generating specification.
+- Experiment run artifacts are absent from the staged change. Any run used as
+  durable evidence has a logged external URI, manifest or checksums, access
+  requirements, and retention policy.
 - Secrets, private data, generated clutter, and unintended large files are
   absent.
 - The final handoff states what changed, what was verified, what was not run,
